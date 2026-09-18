@@ -1,0 +1,16 @@
+:root { color-scheme: dark; }
+html, body { margin: 0; height: 100%; background: #0b0b0d; color: #e6e6e6; font: 14px/1.4 -apple-system, system-ui, sans-serif; overflow: hidden; }
+/* Log on the left, display on the right — no overlap. */
+#main { height: 100%; display: flex; flex-direction: row; }
+#log { flex: 0 0 clamp(160px, 22%, 300px); min-width: 0; height: 100%; overflow: auto; background: #0f0f12; border-right: 1px solid #26262c; font: 11px ui-monospace, Menlo, monospace; padding: 6px 10px; white-space: pre-wrap; word-break: break-all; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
+#spice-area { flex: 1 1 auto; min-width: 0; position: relative; overflow: hidden; background: #0b0b0d; }
+/* Sized to the guest resolution and scaled by console.js (transform keeps
+   spice-html5's offsetX/Y mouse coordinates correct). */
+#spice-screen { position: absolute; left: 50%; top: 50%; transform-origin: center center; line-height: 0; }
+#spice-screen canvas { display: block; background: #000; outline: none; box-shadow: 0 0 0 1px #3a3a4a, 0 10px 34px rgba(0, 0, 0, .55); }
+#debug-div, #message-div { display: none; }
+body.nolog #log { display: none; }
+/* Fullscreen: only the display, edge to edge. */
+body.bare #log { display: none; }
+body.bare #spice-area { background: #000; }
+body.bare #spice-screen canvas { box-shadow: none; }

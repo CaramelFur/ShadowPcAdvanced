@@ -8,14 +8,14 @@ public final class VMProxyAPI: Sendable {
 
     /// reachable / streamer_up / vm_status. Best effort: `nil` on any failure.
     public func status(_ proxy: ProxyContext) async -> VMStatusSignals? {
-        guard let r = try? await http.api("GET", proxy.url("/status"), bearer: proxy.token), r.isSuccess else { return nil }
-        return VMStatusSignals(json: r.json?.unwrapped)
+        await statusResponse(proxy).signals
     }
 
-    /// HTTP status of `/status`, so callers can tell an expired proxy token
-    /// (401/403) from an unreachable VM.
-    public func statusCode(_ proxy: ProxyContext) async -> Int? {
-        try? await http.api("GET", proxy.url("/status"), bearer: proxy.token).status
+    /// Same, plus the HTTP status so callers can tell an expired proxy token
+    /// (401/403) from an unreachable VM (`code == nil`).
+    public func statusResponse(_ proxy: ProxyContext) async -> (code: Int?, signals: VMStatusSignals?) {
+        guard let r = try? await http.api("GET", proxy.url("/status"), bearer: proxy.token) else { return (nil, nil) }
+        return (r.status, r.isSuccess ? VMStatusSignals(json: r.json?.unwrapped) : nil)
     }
 
     /// Creates the launcher client, which provisions the SPICE ticket.
