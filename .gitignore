@@ -1,0 +1,9 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+xcuserdata/
+.DS_Store
+# never commit tokens or captured tickets
+state/
+*.tokens.json
