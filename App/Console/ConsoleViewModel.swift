@@ -55,6 +55,8 @@ final class ConsoleViewModel: ObservableObject {
             if logLines.count > 500 { logLines.removeFirst(logLines.count - 500) }
         case .inputsReady:
             engine.focus()
+        case .notice(let text):
+            notice = text
         case .pageReady, .link:
             break
         }
@@ -142,8 +144,14 @@ final class ConsoleViewModel: ObservableObject {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Power Off")
         alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return engine.focus() }
-        Task { await model.stopVM(vm.id) }
+        // A sheet on this window, never app-modal: a modal alert hidden behind a
+        // fullscreen console would freeze every other window.
+        guard let window = engine.view.window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            if response == .alertFirstButtonReturn { Task { await self.model.stopVM(self.vm.id) } }
+            self.engine.focus()
+        }
     }
 
     /// Disconnect and release the proxy client so the single-client SPICE

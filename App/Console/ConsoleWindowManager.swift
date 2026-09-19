@@ -31,10 +31,16 @@ final class ConsoleWindowManager {
     func closeAllAndWait() async {
         let open = Array(controllers.values)
         controllers = [:]
-        for controller in open {
-            await controller.viewModel.close()
-            controller.close()
+        // Bounded: quitting must never hang on an unreachable proxy.
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                for controller in open { await controller.viewModel.close() }
+            }
+            group.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000) }
+            await group.next()
+            group.cancelAll()
         }
+        open.forEach { $0.close() }
     }
 }
 

@@ -4,6 +4,7 @@ import SwiftUI
 struct VMListView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openWindow) private var openWindow
+    @State private var networkTarget: VMNetworkTarget?
 
     var body: some View {
         Group {
@@ -20,7 +21,7 @@ struct VMListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(model.rows) { row in
-                    VMRowView(row: row)
+                    VMRowView(row: row) { networkTarget = $0 }
                         .padding(.vertical, 6)
                 }
                 .safeAreaInset(edge: .bottom) {
@@ -29,6 +30,12 @@ struct VMListView: View {
                     }
                 }
             }
+        }
+        // Owned by the list with a snapshot of the VM: a sheet hanging off a row
+        // goes blank (and keeps the window blocked) when that row refreshes or
+        // the VM loses its address.
+        .sheet(item: $networkTarget) { target in
+            VMNetworkView(vm: target.vm, address: target.address)
         }
         .toolbar {
             ToolbarItemGroup {
@@ -44,7 +51,7 @@ struct VMListView: View {
 struct VMRowView: View {
     @EnvironmentObject private var model: AppModel
     let row: VMRow
-    @State private var showingNetwork = false
+    let showNetwork: (VMNetworkTarget) -> Void
 
     private var busy: Bool { row.activity != nil }
 
@@ -78,11 +85,10 @@ struct VMRowView: View {
                 .disabled(busy || !row.isRunning)
             Button("Open Console") { Task { await model.openConsole(row.id) } }
                 .disabled(busy || !row.isRunning)
-            Button("Network") { showingNetwork = true }
-                .disabled(row.address == nil)
-                .sheet(isPresented: $showingNetwork) {
-                    if let address = row.address { VMNetworkView(vm: row.vm, address: address) }
-                }
+            Button("Network") {
+                if let address = row.address { showNetwork(VMNetworkTarget(vm: row.vm, address: address)) }
+            }
+            .disabled(row.address == nil)
         }
     }
 
@@ -94,6 +100,12 @@ struct VMRowView: View {
         case nil: return nil
         }
     }
+}
+
+struct VMNetworkTarget: Identifiable {
+    let vm: VM
+    let address: VMAddress
+    var id: String { vm.id }
 }
 
 struct StateBadge: View {

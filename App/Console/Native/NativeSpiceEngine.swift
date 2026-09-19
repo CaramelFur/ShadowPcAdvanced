@@ -14,7 +14,6 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
     private let bridge: Bridge
     private var spice: OpaquePointer?
     private var spamTask: Task<Void, Never>?
-    private var presentScheduled = false
 
     static var libraryVersion: String { String(cString: fs_spice_library_version()) }
 
@@ -96,7 +95,7 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
 
     func disconnect() async {
         spamTask?.cancel()
-        displayView.releaseAllKeys()
+        displayView.letGo()
         if let spice { fs_spice_disconnect(spice) }
         bridge.closeSplices()
     }
@@ -212,10 +211,13 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
         if let spice { fs_spice_mouse_button(spice, Int32(button), down, Int32(buttons)) }
     }
 
+    func mouseGrabChanged(_ grabbed: Bool) {
+        continuation.yield(.notice(grabbed ? "Mouse captured — press ⌃⌥ to release" : nil))
+    }
+
     // MARK: - from the GLib thread (via Bridge)
 
     fileprivate func present() {
-        presentScheduled = false
         displayView.present(surface: bridge.framebuffer.currentSurface, size: bridge.framebuffer.size)
     }
 
@@ -247,12 +249,6 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
         }
     }
 
-    fileprivate func schedulePresent() {
-        guard !presentScheduled else { return }
-        presentScheduled = true
-        // Coalesce bursts of invalidates into one present per runloop turn.
-        DispatchQueue.main.async { [weak self] in self?.present() }
-    }
 }
 
 /// What the C callbacks see. Lives until fs_spice_free has finished, which can
@@ -265,7 +261,7 @@ private final class Bridge: @unchecked Sendable {
     private let lock = NSLock()
     private var target: URL?
     private var splices: [SpiceSplice] = []
-    private var dirty = false
+    private var presentPending = false
     private let session: URLSession = {
         let cfg = URLSessionConfiguration.ephemeral
         cfg.httpCookieStorage = nil
@@ -308,7 +304,22 @@ private final class Bridge: @unchecked Sendable {
         onMain { $0.handleChannelEvent(type: type, event: event) }
     }
 
+    /// Called for every dirty rectangle — thousands per second on a busy
+    /// screen. At most ONE main-thread hop may be pending, and at most ~60 per
+    /// second happen, or the UI starves.
     func displayChanged() {
-        onMain { $0.schedulePresent() }
+        let first = lock.withLock { () -> Bool in
+            if presentPending { return false }
+            presentPending = true
+            return true
+        }
+        guard first else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 16_000_000)
+            guard let self else { return }
+            // Cleared before presenting, so a later invalidate is never lost.
+            self.lock.withLock { self.presentPending = false }
+            self.engine?.present()
+        }
     }
 }

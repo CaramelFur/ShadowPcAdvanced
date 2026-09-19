@@ -57,6 +57,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         AppModel.shared.start()
+        // `FunkyShadow --dump-windows`: print window/modal state after launch (diagnostics).
+        if CommandLine.arguments.contains("--dump-windows") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { AppDelegate.dumpWindows() }
+        }
     }
 
     @objc private func handleGetURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
@@ -71,6 +75,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func deliver(_ url: URL) {
         guard url.scheme?.lowercased() == URLSchemeClaimer.scheme else { return }
         Task { @MainActor in await AppModel.shared.login.handleCallback(url) }
+    }
+
+    static func dumpWindows() {
+        func print(_ line: String) { FileHandle.standardError.write(Data((line + "\n").utf8)) }
+        print("modalWindow: \(NSApp.modalWindow?.title ?? "none")")
+        for w in NSApp.windows where w.isVisible {
+            let close = w.standardWindowButton(.closeButton)
+            print("window '\(w.title)' closable=\(w.styleMask.contains(.closable)) closeEnabled=\(close?.isEnabled ?? false) sheet=\(w.attachedSheet != nil) key=\(w.isKeyWindow) class=\(type(of: w))")
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

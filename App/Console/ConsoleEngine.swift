@@ -25,6 +25,8 @@ enum ConsoleEvent {
     case log(String)
     case link(ConsoleLinkState, message: String?)
     case inputsReady
+    /// A short hint for the toolbar; nil clears it.
+    case notice(String?)
 }
 
 struct TypeResult: Equatable {
