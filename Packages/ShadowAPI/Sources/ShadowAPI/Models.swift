@@ -160,6 +160,13 @@ public struct SpiceTicket: Sendable, Equatable {
     public let secret: String
     public let clientID: String
     public let proxy: ProxyContext
+
+    public init(uri: String, secret: String, clientID: String, proxy: ProxyContext) {
+        self.uri = uri
+        self.secret = secret
+        self.clientID = clientID
+        self.proxy = proxy
+    }
 }
 
 /// A VM-proxy base plus the launcher-scoped bearer for it.

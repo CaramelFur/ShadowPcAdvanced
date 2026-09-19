@@ -1,3 +1,0 @@
-import FunkyShadowUI
-
-FunkyShadowApp.main()

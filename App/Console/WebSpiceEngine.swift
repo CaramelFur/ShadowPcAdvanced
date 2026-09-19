@@ -105,8 +105,6 @@ final class WebSpiceEngine: NSObject, ConsoleEngine {
         return png
     }
 
-    func setLogVisible(_ visible: Bool) async { _ = try? await call("window.funky.setLogVisible(v)", ["v": visible]) }
-
     func setBare(_ bare: Bool) async { _ = try? await call("window.funky.setBare(v)", ["v": bare]) }
 
     func focus() {
@@ -127,6 +125,8 @@ final class WebSpiceEngine: NSObject, ConsoleEngine {
         switch type {
         case "pageReady":
             pageReady = true
+            // The log pane is native (shared by both engines); hide the page's own.
+            Task { _ = try? await call("window.funky.setLogVisible(false)") }
             continuation.yield(.pageReady)
             if let fresh = pendingConnect {
                 pendingConnect = nil

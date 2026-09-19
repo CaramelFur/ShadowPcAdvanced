@@ -10,9 +10,41 @@ struct ConsoleView: View {
                 ConsoleToolbar(viewModel: viewModel)
                 Divider()
             }
-            EngineView(view: viewModel.engine.view)
+            HStack(spacing: 0) {
+                if viewModel.logVisible, !viewModel.isFullScreen {
+                    ConsoleLogPane(lines: viewModel.logLines)
+                    Divider()
+                }
+                EngineView(view: viewModel.engine.view)
+            }
         }
         .background(Color.black)
+    }
+}
+
+/// SPICE link messages live here, never in the header.
+private struct ConsoleLogPane: View {
+    let lines: [String]
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                        Text(line)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(index)
+                    }
+                }
+                .padding(8)
+            }
+            .onChange(of: lines.count) { count in proxy.scrollTo(count - 1, anchor: .bottom) }
+        }
+        .frame(width: 260)
+        .background(Color(nsColor: .underPageBackgroundColor))
     }
 }
 

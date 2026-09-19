@@ -3,11 +3,20 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var login: LoginController
     @AppStorage(URLSchemeClaimer.enabledKey) private var claimEnabled = true
+    @AppStorage(ConsoleEngineKind.defaultsKey) private var engine = ConsoleEngineKind.native.rawValue
     @State private var handler = ""
     @State private var note = ""
 
     var body: some View {
         Form {
+            Section {
+                Picker("Console engine", selection: $engine) {
+                    ForEach(ConsoleEngineKind.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                Text("Applies to consoles opened from now on. Native: \(NativeSpiceEngine.libraryVersion), no audio.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
             Section {
                 Toggle("Claim tech.shadow:// while signing in", isOn: $claimEnabled)
                 Text("FunkyShadow borrows the URL scheme only during sign-in and gives it back afterwards. When off, paste the redirect URL into the sign-in dialog instead.")

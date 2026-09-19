@@ -1,0 +1,90 @@
+# XcodeGen spec — regenerate the project with:  make project
+name: FunkyShadow
+options:
+  bundleIdPrefix: dev.caramelfur
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+packages:
+  ShadowAPI:
+    path: Packages/ShadowAPI
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    # spice-client-glib and friends, built by Scripts/build-spice.sh.
+    SPICE_PREFIX: $(SRCROOT)/ThirdParty/prefix
+
+targets:
+  FunkyShadow:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - Resources/web
+      # Folder reference: the tree (relative ES-module imports) must survive.
+      - path: App/Resources/web
+        type: folder
+        buildPhase: resources
+      - path: CSpiceGlue
+    dependencies:
+      - package: ShadowAPI
+        product: ShadowAPI
+      - sdk: WebKit.framework
+      - sdk: IOSurface.framework
+      - sdk: Carbon.framework
+    settings:
+      base:
+        PRODUCT_NAME: FunkyShadow
+        PRODUCT_BUNDLE_IDENTIFIER: dev.caramelfur.funkyshadow
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_OBJC_BRIDGING_HEADER: App/FunkyShadow-Bridging-Header.h
+        # The ported libraries are built for this machine's architecture only.
+        ARCHS: $(NATIVE_ARCH_ACTUAL)
+        ONLY_ACTIVE_ARCH: YES
+        HEADER_SEARCH_PATHS:
+          - $(SPICE_PREFIX)/include/spice-client-glib-2.0
+          - $(SPICE_PREFIX)/include/spice-1
+          - $(SPICE_PREFIX)/include/glib-2.0
+          - $(SPICE_PREFIX)/lib/glib-2.0/include
+          - $(SPICE_PREFIX)/include/pixman-1
+          - $(SPICE_PREFIX)/include
+        LIBRARY_SEARCH_PATHS: $(SPICE_PREFIX)/lib
+        OTHER_LDFLAGS:
+          - -lspice-client-glib-2.0
+          - -lgobject-2.0
+          - -lglib-2.0
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        # No Developer ID on this machine: ad-hoc signature.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        GCC_WARN_INHIBIT_ALL_WARNINGS: NO
+    preBuildScripts:
+      - name: Check SPICE libraries
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ ! -f "$SPICE_PREFIX/lib/libspice-client-glib-2.0.dylib" ]; then
+            echo "error: spice-client-glib is not built yet. Run Scripts/build-spice.sh (or: make deps)."
+            exit 1
+          fi
+    postBuildScripts:
+      - name: Embed SPICE dylibs
+        basedOnDependencyAnalysis: false
+        script: '"$SRCROOT/Scripts/embed-dylibs.sh"'
+
+schemes:
+  FunkyShadow:
+    build:
+      targets:
+        FunkyShadow: all
+    run:
+      config: Debug
+    archive:
+      config: Release

@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO="https://gitlab.freedesktop.org/spice/spice-html5.git"
 PIN="f3d6692f2e827bde7b41812b83a7012ff472e7b6"
-DEST="Sources/FunkyShadowUI/Resources/web/spice-html5"
+DEST="App/Resources/web/spice-html5"
 
 SRC=""
 if [ "${1:-}" = "--from" ]; then

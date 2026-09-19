@@ -20,7 +20,8 @@ final class ConsoleViewModel: ObservableObject {
     /// Real VM status from the proxy — never the SPICE link state.
     @Published private(set) var statusLabel = "…"
     @Published private(set) var statusColor: Color = .orange
-    @Published var logVisible = true { didSet { Task { await engine.setLogVisible(logVisible) } } }
+    @Published var logVisible = true
+    @Published private(set) var logLines: [String] = []
     @Published var isFullScreen = false { didSet { Task { await engine.setBare(isFullScreen) } } }
     @Published var notice: String?
 
@@ -28,14 +29,14 @@ final class ConsoleViewModel: ObservableObject {
         self.vm = vm
         self.address = address
         self.model = model
-        self.engine = engine ?? WebSpiceEngine()
+        self.engine = engine ?? ConsoleEngineKind.current.make()
         self.engine.ticketProvider = { [weak self] fresh in try await self?.provideTicket(fresh: fresh) }
     }
 
     func start() {
         eventTask = Task { [weak self, events = engine.events] in
             for await event in events {
-                if case .inputsReady = event { self?.engine.focus() }
+                self?.handle(event)
             }
         }
         statusTask = Task { [weak self] in
@@ -45,6 +46,18 @@ final class ConsoleViewModel: ObservableObject {
             }
         }
         Task { await engine.connect(fresh: false) }
+    }
+
+    private func handle(_ event: ConsoleEvent) {
+        switch event {
+        case .log(let line):
+            logLines.append(line)
+            if logLines.count > 500 { logLines.removeFirst(logLines.count - 500) }
+        case .inputsReady:
+            engine.focus()
+        case .pageReady, .link:
+            break
+        }
     }
 
     /// Reuse the current ticket unless a fresh one is demanded: re-minting

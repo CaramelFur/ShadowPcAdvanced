@@ -1,0 +1,118 @@
+diff --color -ruN a/spice-gtk-0.42/meson.build b/spice-gtk-0.42/meson.build
+--- a/spice-gtk-0.42/meson.build	2023-01-23 11:04:11
++++ b/spice-gtk-0.42/meson.build	2026-09-19 01:58:50
+@@ -208,10 +208,8 @@
+ 
+ gstreamer_version = '1.10'
+ gstreamer_version_info = '>= @0@'.format(gstreamer_version)
+-deps = ['gstreamer-1.0', 'gstreamer-base-1.0', 'gstreamer-app-1.0', 'gstreamer-audio-1.0', 'gstreamer-video-1.0']
+-foreach dep : deps
+-  spice_glib_deps += dependency(dep, version: gstreamer_version_info)
+-endforeach
++# FunkyShadow: GStreamer is patched out (no audio, no VP8/H264 streams);
++# see src/spice-nogst.c. The built-in MJPEG decoder still handles streams.
+ 
+ # builtin-mjpeg
+ spice_gtk_has_builtin_mjpeg = false
+diff --color -ruN a/spice-gtk-0.42/src/channel-display-priv.h b/spice-gtk-0.42/src/channel-display-priv.h
+--- a/spice-gtk-0.42/src/channel-display-priv.h	2023-01-23 11:04:11
++++ b/spice-gtk-0.42/src/channel-display-priv.h	2026-09-19 01:58:50
+@@ -29,7 +29,7 @@
+ #include "common/quic.h"
+ #include "common/rop3.h"
+ 
+-#include <gst/gst.h>
++typedef struct _GstPipeline GstPipeline; /* FunkyShadow: no GStreamer */
+ 
+ G_BEGIN_DECLS
+ 
+diff --color -ruN a/spice-gtk-0.42/src/channel-display.c b/spice-gtk-0.42/src/channel-display.c
+--- a/spice-gtk-0.42/src/channel-display.c	2023-01-23 11:04:11
++++ b/spice-gtk-0.42/src/channel-display.c	2026-09-19 01:58:50
+@@ -500,7 +500,7 @@
+                      g_cclosure_user_marshal_BOOLEAN__POINTER,
+                      G_TYPE_BOOLEAN,
+                      1,
+-                     GST_TYPE_PIPELINE);
++                     G_TYPE_POINTER);
+ 
+     channel_set_handlers(SPICE_CHANNEL_CLASS(klass));
+ }
+diff --color -ruN a/spice-gtk-0.42/src/meson.build b/spice-gtk-0.42/src/meson.build
+--- a/spice-gtk-0.42/src/meson.build	2023-01-23 11:04:11
++++ b/spice-gtk-0.42/src/meson.build	2026-09-19 01:58:50
+@@ -95,7 +95,7 @@
+   'bio-gio.c',
+   'bio-gio.h',
+   'channel-base.c',
+-  'channel-display-gst.c',
++  'spice-nogst.c',
+   'channel-display-priv.h',
+   'channel-playback-priv.h',
+   'channel-usbredir-priv.h',
+@@ -118,8 +118,6 @@
+   'spice-file-transfer-task.c',
+   'spice-file-transfer-task-priv.h',
+   'spice-glib-main.c',
+-  'spice-gstaudio.c',
+-  'spice-gstaudio.h',
+   'spice-option.h',
+   'spice-session-priv.h',
+   'spice-uri.c',
+@@ -188,7 +186,9 @@
+ if not spice_gtk_has_version_script
+   spice_client_glib_syms = files('spice-glib-sym-file')
+   spice_client_glib_syms_path = meson.current_source_dir() / 'spice-glib-sym-file'
+-  spice_gtk_version_script = ['-export-symbols', spice_client_glib_syms_path]
++  # FunkyShadow: '-export-symbols' is a libtool flag that Apple's ld rejects.
++  # Export everything; the public API already has default visibility.
++  spice_gtk_version_script = []
+ endif
+ 
+ # soversion
+diff --color -ruN a/spice-gtk-0.42/src/spice-audio.c b/spice-gtk-0.42/src/spice-audio.c
+--- a/spice-gtk-0.42/src/spice-audio.c	2023-01-23 11:04:11
++++ b/spice-gtk-0.42/src/spice-audio.c	2026-09-19 01:58:50
+@@ -40,7 +40,6 @@
+ #include "spice-session-priv.h"
+ #include "spice-channel-priv.h"
+ #include "spice-audio-priv.h"
+-#include "spice-gstaudio.h"
+ 
+ G_STATIC_ASSERT(sizeof(SpiceAudioClass) == sizeof(GObjectClass) + 11 * sizeof(gpointer));
+ 
+@@ -233,7 +232,8 @@
+     if (name == NULL)
+         name = g_get_application_name();
+ 
+-    self = SPICE_AUDIO(spice_gstaudio_new(session, context, name));
++    /* FunkyShadow: no GStreamer, so no audio backend. */
++    self = NULL;
+     if (self != NULL) {
+         spice_g_signal_connect_object(session, "notify::enable-audio", G_CALLBACK(session_enable_audio), self, 0);
+         spice_g_signal_connect_object(session, "channel-new", G_CALLBACK(channel_new), self, G_CONNECT_AFTER);
+diff --color -ruN a/spice-gtk-0.42/src/spice-nogst.c b/spice-gtk-0.42/src/spice-nogst.c
+--- a/spice-gtk-0.42/src/spice-nogst.c	1970-01-01 01:00:00
++++ b/spice-gtk-0.42/src/spice-nogst.c	2026-09-19 01:58:50
+@@ -0,0 +1,21 @@
++/* FunkyShadow: stand-in for channel-display-gst.c and spice-gstaudio.c so
++ * spice-client-glib builds without GStreamer. Video streams fall back to the
++ * built-in MJPEG decoder; other codecs are never advertised to the server. */
++#include "config.h"
++
++#include "spice-client.h"
++#include "spice-common.h"
++#include "spice-channel-priv.h"
++#include "channel-display-priv.h"
++
++G_GNUC_INTERNAL
++VideoDecoder* create_gstreamer_decoder(int codec_type, display_stream *stream)
++{
++    return NULL;
++}
++
++G_GNUC_INTERNAL
++gboolean gstvideo_has_codec(int codec_type)
++{
++    return FALSE;
++}

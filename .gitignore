@@ -7,3 +7,9 @@ xcuserdata/
 # never commit tokens or captured tickets
 state/
 *.tokens.json
+ThirdParty/dl/
+ThirdParty/build/
+ThirdParty/prefix/
+ThirdParty/logs/
+ThirdParty/src/
+ThirdParty/tools/

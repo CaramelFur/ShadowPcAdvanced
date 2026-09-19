@@ -33,6 +33,37 @@ struct TypeResult: Equatable {
     var aborted: Bool
 }
 
+/// Which renderer a new console window uses.
+enum ConsoleEngineKind: String, CaseIterable, Identifiable {
+    /// spice-client-glib (ported from Linux) over the WebSocket splice.
+    case native
+    /// spice-html5 in a WKWebView — the fallback.
+    case web
+
+    static let defaultsKey = "console.engine"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .native: return "Native (spice-glib)"
+        case .web: return "Web (spice-html5)"
+        }
+    }
+
+    static var current: ConsoleEngineKind {
+        UserDefaults.standard.string(forKey: defaultsKey).flatMap(ConsoleEngineKind.init(rawValue:)) ?? .native
+    }
+
+    @MainActor
+    func make() -> ConsoleEngine {
+        switch self {
+        case .native: return NativeSpiceEngine()
+        case .web: return WebSpiceEngine()
+        }
+    }
+}
+
 /// The seam between the console window and whatever renders SPICE. Today that
 /// is spice-html5 in a WKWebView; a native engine could replace it later.
 @MainActor
@@ -49,7 +80,6 @@ protocol ConsoleEngine: AnyObject {
     func spamEscape(duration: TimeInterval, period: TimeInterval) async
     func typeText(_ text: String) async throws -> TypeResult
     func screenshotPNG() async throws -> Data
-    func setLogVisible(_ visible: Bool) async
     func setBare(_ bare: Bool) async
     func focus()
 }

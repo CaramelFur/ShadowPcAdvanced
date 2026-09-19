@@ -1,13 +1,12 @@
 import AppKit
 import SwiftUI
 
-public struct FunkyShadowApp: App {
+@main
+struct FunkyShadowApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel.shared
 
-    public init() {}
-
-    public var body: some Scene {
+    var body: some Scene {
         // `Window`, not `WindowGroup`: an incoming tech.shadow:// URL must never
         // spawn a second main window.
         Window("FunkyShadow", id: "main") {
@@ -50,6 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Bundle.main.bundleURL.pathExtension != "app" {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
+        }
+        // `FunkyShadow --selftest-native`: exercise the spice-glib thread, the
+        // open-fd path and the splice against a dead endpoint, then exit.
+        if CommandLine.arguments.contains("--selftest-native") {
+            Task { @MainActor in exit(await NativeSpiceEngine.selfTest() ? 0 : 1) }
+            return
         }
         AppModel.shared.start()
     }
