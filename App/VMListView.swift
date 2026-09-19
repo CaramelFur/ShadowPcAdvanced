@@ -44,6 +44,7 @@ struct VMListView: View {
 struct VMRowView: View {
     @EnvironmentObject private var model: AppModel
     let row: VMRow
+    @State private var showingNetwork = false
 
     private var busy: Bool { row.activity != nil }
 
@@ -77,6 +78,11 @@ struct VMRowView: View {
                 .disabled(busy || !row.isRunning)
             Button("Open Console") { Task { await model.openConsole(row.id) } }
                 .disabled(busy || !row.isRunning)
+            Button("Network") { showingNetwork = true }
+                .disabled(row.address == nil)
+                .sheet(isPresented: $showingNetwork) {
+                    if let address = row.address { VMNetworkView(vm: row.vm, address: address) }
+                }
         }
     }
 
