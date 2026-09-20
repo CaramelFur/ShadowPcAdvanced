@@ -13,6 +13,11 @@ All libraries below are linked dynamically and shipped as separate, replaceable
 | pixman | 0.46.4 | MIT | |
 | OpenSSL | 3.x (Homebrew) | Apache-2.0 | |
 | libjpeg-turbo | 3.x (Homebrew) | BSD-3-Clause / IJG / zlib | |
+| CocoaSpice (UTM) | 127033f | Apache-2.0 | compiled into the app; modified, see `ThirdParty/CocoaSpice/VENDORED.md` and `ThirdParty/patches/cocoaspice-funkyshadow.patch` |
 | spice-html5 | f3d6692 | LGPL-3.0-or-later | unmodified; see `App/Resources/web/spice-html5/VENDORED.md` |
 
-Sources and checksums: `Scripts/build-spice.sh`, `Scripts/vendor-spice.sh`.
+Sources and checksums: `Scripts/build-spice.sh`, `Scripts/vendor-spice.sh`, `Scripts/vendor-cocoaspice.sh`.
+
+`App/Console/Cocoa/SpiceMetalView.swift` follows the input-capture design of UTM's
+`VMMetalView.swift` (Apache-2.0, © osy), including its use of the private
+`CGSSetGlobalHotKeyOperatingMode` call.

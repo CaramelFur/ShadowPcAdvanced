@@ -85,6 +85,10 @@ private struct ConsoleToolbar: View {
                 separator
                 Toggle("Log", isOn: $viewModel.logVisible).toggleStyle(.button)
                 Button("Reconnect") { viewModel.reconnect() }
+                if viewModel.engine.supportsCapture {
+                    Button("Capture input") { viewModel.engine.toggleCapture() }
+                        .help("Send every key (⌘Tab, ⌘Space, ⌘Q…) and the pointer to the VM. ⌃⌥ toggles it.")
+                }
 
                 if let notice = viewModel.notice {
                     Text(notice).font(.callout).foregroundStyle(.secondary).padding(.leading, 6)

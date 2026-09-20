@@ -19,16 +19,13 @@ struct FSSpice {
 
 static pthread_once_t loop_once = PTHREAD_ONCE_INIT;
 
-static void *loop_thread(void *unused) {
-    pthread_setname_np("spice-glib");
-    g_main_loop_run(g_main_loop_new(NULL, FALSE));
-    return NULL;
-}
+// Implemented in FSLoop.m: the process has ONE GLib thread, shared with the
+// CocoaSpice engine. Two threads iterating the default context would run SPICE
+// coroutines (thread-local state) on both.
+extern void fs_spice_start_shared_loop(void);
 
 static void start_loop(void) {
-    pthread_t t;
-    pthread_create(&t, NULL, loop_thread, NULL);
-    pthread_detach(t);
+    fs_spice_start_shared_loop();
 }
 
 // Always queue, never run inline: g_main_context_invoke() would execute on the

@@ -31,12 +31,21 @@ targets:
         type: folder
         buildPhase: resources
       - path: CSpiceGlue
+      # UTM's CocoaSpice, vendored by Scripts/vendor-cocoaspice.sh.
+      - path: ThirdParty/CocoaSpice
+        excludes:
+          - LICENSE
+          - "**/*.md"
     dependencies:
       - package: ShadowAPI
         product: ShadowAPI
       - sdk: WebKit.framework
       - sdk: IOSurface.framework
       - sdk: Carbon.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
+      - sdk: CoreImage.framework
     settings:
       base:
         PRODUCT_NAME: FunkyShadow
@@ -54,6 +63,12 @@ targets:
           - $(SPICE_PREFIX)/lib/glib-2.0/include
           - $(SPICE_PREFIX)/include/pixman-1
           - $(SPICE_PREFIX)/include
+          - $(SRCROOT)/ThirdParty/CocoaSpice/CocoaSpice
+          - $(SRCROOT)/ThirdParty/CocoaSpice/CocoaSpice/include
+          - $(SRCROOT)/ThirdParty/CocoaSpice/CocoaSpiceRenderer
+          - $(SRCROOT)/ThirdParty/CocoaSpice/CocoaSpiceRenderer/include
+        CLANG_ENABLE_MODULES: YES
+        CLANG_ENABLE_OBJC_ARC: YES
         LIBRARY_SEARCH_PATHS: $(SPICE_PREFIX)/lib
         OTHER_LDFLAGS:
           - -lspice-client-glib-2.0
@@ -66,6 +81,10 @@ targets:
         ENABLE_HARDENED_RUNTIME: NO
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         GCC_WARN_INHIBIT_ALL_WARNINGS: NO
+      configs:
+        Release:
+          # CocoaSpice asserts on things a remote server decides (monitor count…).
+          GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "G_DISABLE_ASSERT=1", "NDEBUG=1"]
     preBuildScripts:
       - name: Check SPICE libraries
         basedOnDependencyAnalysis: false

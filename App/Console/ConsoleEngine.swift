@@ -37,29 +37,34 @@ struct TypeResult: Equatable {
 
 /// Which renderer a new console window uses.
 enum ConsoleEngineKind: String, CaseIterable, Identifiable {
-    /// spice-client-glib (ported from Linux) over the WebSocket splice.
+    /// UTM's CocoaSpice on spice-client-glib: Metal renderer, UTM-style input capture.
+    case metal
+    /// The first native engine: own C glue, CALayer/IOSurface presentation.
     case native
     /// spice-html5 in a WKWebView — the fallback.
     case web
 
-    static let defaultsKey = "console.engine"
+    /// ".v2": the Metal engine became the default; an old stored choice doesn't pin the previous one.
+    static let defaultsKey = "console.engine.v2"
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .native: return "Native (spice-glib)"
+        case .metal: return "Native — Metal (CocoaSpice)"
+        case .native: return "Native — classic (CALayer)"
         case .web: return "Web (spice-html5)"
         }
     }
 
     static var current: ConsoleEngineKind {
-        UserDefaults.standard.string(forKey: defaultsKey).flatMap(ConsoleEngineKind.init(rawValue:)) ?? .native
+        UserDefaults.standard.string(forKey: defaultsKey).flatMap(ConsoleEngineKind.init(rawValue:)) ?? .metal
     }
 
     @MainActor
     func make() -> ConsoleEngine {
         switch self {
+        case .metal: return CocoaSpiceEngine()
         case .native: return NativeSpiceEngine()
         case .web: return WebSpiceEngine()
         }
@@ -84,4 +89,12 @@ protocol ConsoleEngine: AnyObject {
     func screenshotPNG() async throws -> Data
     func setBare(_ bare: Bool) async
     func focus()
+    /// Whether keyboard + pointer can be captured for the guest (⌃⌥).
+    var supportsCapture: Bool { get }
+    func toggleCapture()
+}
+
+extension ConsoleEngine {
+    var supportsCapture: Bool { false }
+    func toggleCapture() {}
 }

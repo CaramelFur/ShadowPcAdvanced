@@ -1,0 +1,321 @@
+diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
+--- a/CocoaSpice/CSConnection.m	2026-09-20 04:33:33
++++ b/CocoaSpice/CSConnection.m	2026-09-20 04:33:33
+@@ -38,6 +38,7 @@
+ @property (nonatomic, readwrite) SpiceSession *spiceSession;
+ @property (nonatomic, readwrite) SpiceMainChannel *spiceMain;
+ @property (nonatomic, readwrite) SpiceAudio *spiceAudio;
++@property (nonatomic, nullable, copy) CSConnectionFileDescriptorProvider fileDescriptorProvider;
+ 
+ @end
+ 
+@@ -76,8 +77,10 @@
+             switch (event) {
+                 case SPICE_CHANNEL_ERROR_IO: code = kCSConnectionErrorIO; break;
+                 case SPICE_CHANNEL_ERROR_TLS:
+-                case SPICE_CHANNEL_ERROR_LINK:
+                 case SPICE_CHANNEL_ERROR_AUTH: code = kCSConnectionErrorAuthentication; break;
++                // FunkyShadow: a link that dies in the handshake (transport refused
++                // or dropped) is not a wrong ticket.
++                case SPICE_CHANNEL_ERROR_LINK: code = kCSConnectionErrorConnect; break;
+                 case SPICE_CHANNEL_ERROR_CONNECT: code = kCSConnectionErrorConnect; break;
+                 default: code = kCSConnectionErrorUnknown; break;
+             }
+@@ -171,6 +174,23 @@
+     }
+ }
+ 
++// FunkyShadow: the transport is supplied per channel by `fileDescriptorProvider`
++// (a socketpair end bridged to a WebSocket) instead of being dialled by SPICE.
++static void cs_channel_open_fd(SpiceChannel *channel, gint with_tls, gpointer data)
++{
++    CSConnection *self = (__bridge CSConnection *)data;
++    CSConnectionFileDescriptorProvider provider = self.fileDescriptorProvider;
++    int type = 0, chid = 0;
++
++    g_object_get(channel, "channel-type", &type, "channel-id", &chid, NULL);
++    int fd = provider ? provider(type, chid) : -1;
++    if (fd < 0) {
++        spice_channel_disconnect(channel, SPICE_CHANNEL_ERROR_CONNECT);
++        return;
++    }
++    spice_channel_open_fd(channel, fd);
++}
++
+ static void cs_channel_new(SpiceSession *s, SpiceChannel *channel, gpointer data)
+ {
+     CSConnection *self = (__bridge CSConnection *)data;
+@@ -178,6 +198,11 @@
+     
+     g_object_get(channel, "channel-id", &chid, NULL);
+     SPICE_DEBUG("new channel (#%d)", chid);
++
++    if (self.fileDescriptorProvider) {
++        g_signal_connect(channel, "open-fd",
++                         G_CALLBACK(cs_channel_open_fd), (__bridge void *)self);
++    }
+     
+     if (SPICE_IS_MAIN_CHANNEL(channel)) {
+         SPICE_DEBUG("new main channel");
+@@ -262,6 +287,7 @@
+     int chid;
+     
+     g_object_get(channel, "channel-id", &chid, NULL);
++    g_signal_handlers_disconnect_by_func(channel, G_CALLBACK(cs_channel_open_fd), (__bridge void *)self);
+     if (SPICE_IS_MAIN_CHANNEL(channel)) {
+         SPICE_DEBUG("[CocoaSpice] %s:%d", __FUNCTION__, __LINE__);
+         SPICE_DEBUG("zap main channel");
+@@ -468,11 +494,45 @@
+     return self;
+ }
+ 
++- (instancetype)initWithFileDescriptorProvider:(CSConnectionFileDescriptorProvider)provider {
++    if (self = [super init]) {
++        self.spiceSession = spice_session_new();
++        self.fileDescriptorProvider = provider;
++        g_object_set(self.spiceSession,
++                     "enable-audio", FALSE,
++                     "enable-usbredir", FALSE,
++                     "enable-smartcard", FALSE,
++                     NULL);
++        [self finishInit];
++    }
++    return self;
++}
++
+ - (BOOL)connect {
++    if (self.fileDescriptorProvider) {
++        // fd = -1: every channel asks for its transport through "open-fd".
++        // SPICE owns its thread; never start a session from the caller's.
++        SpiceSession *session = self.spiceSession;
++        g_object_ref(session);
++        [CSMain.sharedInstance asyncWith:^{
++            spice_session_open_fd(session, -1);
++            g_object_unref(session);
++        }];
++        return YES;
++    }
+     return spice_session_connect(self.spiceSession);
+ }
+ 
+ - (void)disconnect {
++    if (self.fileDescriptorProvider) {
++        SpiceSession *session = self.spiceSession;
++        g_object_ref(session);
++        [CSMain.sharedInstance asyncWith:^{
++            spice_session_disconnect(session);
++            g_object_unref(session);
++        }];
++        return;
++    }
+     spice_session_disconnect(self.spiceSession);
+ }
+ 
+diff --color -ruN a/CocoaSpice/CSDisplay.m b/CocoaSpice/CSDisplay.m
+--- a/CocoaSpice/CSDisplay.m	2026-09-20 04:33:33
++++ b/CocoaSpice/CSDisplay.m	2026-09-20 04:33:33
+@@ -80,7 +80,16 @@
+     CSDisplay *self = (__bridge CSDisplay *)data;
+ 
+     g_assert(CSMain.sharedInstance.isCurrentContextMain);
+-    g_assert(format == SPICE_SURFACE_FMT_32_xRGB || format == SPICE_SURFACE_FMT_16_555);
++    // FunkyShadow: never abort on a server we don't control. ARGB has the same
++    // layout as xRGB (alpha is ignored); 16-bit 565 is shown as 555.
++    if (format == SPICE_SURFACE_FMT_32_ARGB) {
++        format = SPICE_SURFACE_FMT_32_xRGB;
++    } else if (format != SPICE_SURFACE_FMT_32_xRGB) {
++        if (format != SPICE_SURFACE_FMT_16_555) {
++            g_warning("[CocoaSpice] unexpected primary surface format %d", format);
++        }
++        format = SPICE_SURFACE_FMT_16_555;
++    }
+     self.canvasArea = CGRectMake(0, 0, width, height);
+     self.canvasFormat = format;
+     self.canvasStride = stride;
+diff --color -ruN a/CocoaSpice/CSMain.m b/CocoaSpice/CSMain.m
+--- a/CocoaSpice/CSMain.m	2026-09-20 04:33:33
++++ b/CocoaSpice/CSMain.m	2026-09-20 04:33:33
+@@ -18,7 +18,6 @@
+ #import <glib.h>
+ #import <spice-client.h>
+ #import <pthread.h>
+-#import "gst_ios_init.h"
+ 
+ @interface CSMain ()
+ 
+@@ -39,6 +38,7 @@
+ @implementation CSMain {
+     GMainContext *_main_context;
+     gint _loop_quit;
++    dispatch_semaphore_t _loop_ready;
+ }
+ 
+ static void logHandler(const gchar *log_domain, GLogLevelFlags log_level,
+@@ -91,9 +91,17 @@
+     CSMain *self = (__bridge_transfer CSMain *)args;
+     
+     pthread_setname_np("SPICE Main Loop");
+-    gst_ios_init();
+     
+     g_main_context_ref(self->_main_context);
++    // FunkyShadow: own the (default) context for the life of the thread, not
++    // just per iteration. Otherwise g_main_context_invoke() from a thread
++    // whose thread-default context is this one - every thread, for the default
++    // context - may run SPICE code inline on the wrong thread, and the ucontext
++    // coroutine state is thread-local.
++    while (!g_main_context_acquire(self->_main_context)) {
++        usleep(1000);
++    }
++    dispatch_semaphore_signal(self->_loop_ready);
+     g_main_context_push_thread_default(self->_main_context);
+     // Iterate manually instead of g_main_loop_run() so every dispatch runs
+     // inside an autorelease pool: SPICE callbacks autorelease Objective-C
+@@ -106,6 +114,7 @@
+         }
+     }
+     g_main_context_pop_thread_default(self->_main_context);
++    g_main_context_release(self->_main_context);
+     g_main_context_unref(self->_main_context);
+     
+     return NULL;
+@@ -132,9 +141,10 @@
+ - (id)init {
+     self = [super init];
+     if (self) {
+-        if ((_main_context = g_main_context_new()) == NULL) {
+-            return nil;
+-        }
++        // FunkyShadow: stock spice-gtk (no spice_util_set_main_context patch)
++        // schedules everything on the default context, so that is the one
++        // this thread iterates.
++        _main_context = g_main_context_ref(g_main_context_default());
+         g_log_set_default_handler(logHandler, NULL);
+     }
+     return self;
+@@ -155,13 +165,15 @@
+         if (!self.running) {
+             pthread_t spiceThread;
+             g_atomic_int_set(&_loop_quit, FALSE);
+-            spice_util_set_main_context(_main_context);
+             pthread_attr_t qosAttribute;
+             pthread_attr_init(&qosAttribute);
+             pthread_attr_set_qos_class_np(&qosAttribute, QOS_CLASS_USER_INTERACTIVE, 0);
++            _loop_ready = dispatch_semaphore_create(0);
+             if (pthread_create(&spiceThread, &qosAttribute, &spice_main_loop, (__bridge_retained void *)self) != 0) {
+                 return NO;
+             }
++            // nothing may be scheduled before the thread owns the context
++            dispatch_semaphore_wait(_loop_ready, DISPATCH_TIME_FOREVER);
+             self.running = YES;
+             self.spiceThread = spiceThread;
+         }
+@@ -173,7 +185,6 @@
+     @synchronized (self) {
+         if (self.running) {
+             void *status;
+-            spice_util_set_main_context(NULL);
+             g_atomic_int_set(&_loop_quit, TRUE);
+             g_main_context_wakeup(_main_context);
+             pthread_join(self.spiceThread, &status);
+diff --color -ruN a/CocoaSpice/include/CSConnection.h b/CocoaSpice/include/CSConnection.h
+--- a/CocoaSpice/include/CSConnection.h	2026-09-20 04:33:33
++++ b/CocoaSpice/include/CSConnection.h	2026-09-20 04:33:33
+@@ -23,6 +23,10 @@
+ 
+ NS_ASSUME_NONNULL_BEGIN
+ 
++/// FunkyShadow: returns a connected socket for the given SPICE channel, or -1.
++/// Called on the SPICE thread; the connection owns the descriptor afterwards.
++typedef int (^CSConnectionFileDescriptorProvider)(NSInteger channelType, NSInteger channelID);
++
+ /// Main interface to CocoaSpice
+ ///
+ /// Use this class to manage connections to SPICE and use the properties to interface with the client.
+@@ -77,6 +81,11 @@
+ /// Create a new Unix socket connection
+ /// @param socketFile Socket file
+ - (instancetype)initWithUnixSocketFile:(NSURL *)socketFile NS_DESIGNATED_INITIALIZER;
++
++/// FunkyShadow: create a connection whose channels are each carried by a file
++/// descriptor from `provider` (SPICE over something that is not a plain socket).
++/// Audio, USB redirection and smartcard channels are disabled.
++- (instancetype)initWithFileDescriptorProvider:(CSConnectionFileDescriptorProvider)provider NS_DESIGNATED_INITIALIZER;
+ 
+ /// Connects to SPICE server
+ ///
+diff --color -ruN a/CocoaSpice/include/CSCursor.h b/CocoaSpice/include/CSCursor.h
+--- a/CocoaSpice/include/CSCursor.h	2026-09-20 04:33:33
++++ b/CocoaSpice/include/CSCursor.h	2026-09-20 04:33:33
+@@ -15,7 +15,7 @@
+ //
+ 
+ #import "CSChannel.h"
+-@import CocoaSpiceRenderer;
++#import "CocoaSpiceRenderer.h"
+ 
+ @class CSDisplay;
+ 
+diff --color -ruN a/CocoaSpice/include/CSDisplay.h b/CocoaSpice/include/CSDisplay.h
+--- a/CocoaSpice/include/CSDisplay.h	2026-09-20 04:33:33
++++ b/CocoaSpice/include/CSDisplay.h	2026-09-20 04:33:33
+@@ -17,7 +17,7 @@
+ #import <Foundation/Foundation.h>
+ #import "CSChannel.h"
+ @import CoreGraphics;
+-@import CocoaSpiceRenderer;
++#import "CocoaSpiceRenderer.h"
+ 
+ @class CSCursor;
+ @class CSScreenshot;
+diff --color -ruN a/CocoaSpiceRenderer/CSMetalRenderer.m b/CocoaSpiceRenderer/CSMetalRenderer.m
+--- a/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-20 04:33:33
++++ b/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-20 04:33:33
+@@ -134,8 +134,8 @@
+         
+         // Load all the shader files with a .metal file extension in the project
+         // FIXME: on Swift we have `Bundle.module` generated by SPM but it doesn't appear to be the case for Obj-C
+-        NSURL *modulePath = [NSBundle.mainBundle.resourceURL URLByAppendingPathComponent:@"CocoaSpice_CocoaSpiceRenderer.bundle"];
+-        NSBundle *bundle = [NSBundle bundleWithURL:modulePath];
++        // FunkyShadow: CSShaders.metal is compiled into the app's default.metallib.
++        NSBundle *bundle = NSBundle.mainBundle;
+         id<MTLLibrary> defaultLibrary = [_device newDefaultLibraryWithBundle:bundle error:&error];
+         NSAssert(defaultLibrary, @"Failed to get library from bundle: %@", error);
+ 
+@@ -196,6 +196,9 @@
+     viewportSize.x = size.width;
+     viewportSize.y = size.height;
+     _renderViewportSize = viewportSize;
++    // FunkyShadow: a resized drawable must be redrawn even when the scale is
++    // unchanged (letterboxed), or the previous frame is shown stretched.
++    self.renderNeedsUpdate = YES;
+ }
+ 
+ /// Called whenever view changes orientation or is resized
+@@ -279,6 +282,9 @@
+     id<CAMetalDrawable> currentDrawable = view.currentDrawable;
+ 
+     if (renderPassDescriptor == nil || currentDrawable == nil) {
++        // FunkyShadow: no drawable (minimised, off screen) must not leave the
++        // SPICE thread waiting for a draw that never comes.
++        [self _completeDraw];
+         return;
+     }
+ 
+@@ -385,6 +391,9 @@
+     dispatch_async(dispatch_get_main_queue(), ^{
+         self.renderSourceData = nil;
+         self.renderNeedsUpdate = NO;
++        // FunkyShadow: the view may never draw again (window closing); anyone
++        // waiting on a draw has to be let go now.
++        [self _completeDraw];
+     });
+ }
+ 
+@@ -435,6 +444,7 @@
+     }
+ 
+     [renderEncoder endEncoding];
++    return YES; // FunkyShadow: upstream falls off the end (an error under Xcode's defaults)
+ }
+ 
+ - (void)_renderEncoder:(id<MTLRenderCommandEncoder>)renderEncoder

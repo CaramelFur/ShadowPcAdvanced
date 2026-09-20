@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var login: LoginController
     @AppStorage(URLSchemeClaimer.enabledKey) private var claimEnabled = true
-    @AppStorage(ConsoleEngineKind.defaultsKey) private var engine = ConsoleEngineKind.native.rawValue
+    @AppStorage(ConsoleEngineKind.defaultsKey) private var engine = ConsoleEngineKind.metal.rawValue
     @State private var handler = ""
     @State private var note = ""
 
@@ -13,7 +13,7 @@ struct SettingsView: View {
                 Picker("Console engine", selection: $engine) {
                     ForEach(ConsoleEngineKind.allCases) { Text($0.title).tag($0.rawValue) }
                 }
-                Text("Applies to consoles opened from now on. Native: \(NativeSpiceEngine.libraryVersion), no audio.")
+                Text("Applies to consoles opened from now on. Both native engines use spice-glib \(NativeSpiceEngine.libraryVersion) (no audio); Metal draws with the GPU and can capture ⌘Tab, ⌘Space and the pointer (⌃⌥).")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

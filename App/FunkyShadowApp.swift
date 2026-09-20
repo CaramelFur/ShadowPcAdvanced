@@ -53,7 +53,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `FunkyShadow --selftest-native`: exercise the spice-glib thread, the
         // open-fd path and the splice against a dead endpoint, then exit.
         if CommandLine.arguments.contains("--selftest-native") {
-            Task { @MainActor in exit(await NativeSpiceEngine.selfTest() ? 0 : 1) }
+            Task { @MainActor in
+                // Both engines, one after the other: they share the GLib thread.
+                let classic = await NativeSpiceEngine.selfTest()
+                let metal = await CocoaSpiceEngine.selfTest()
+                exit(classic && metal ? 0 : 1)
+            }
             return
         }
         AppModel.shared.start()
