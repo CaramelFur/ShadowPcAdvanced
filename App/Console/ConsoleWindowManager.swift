@@ -13,12 +13,14 @@ final class ConsoleWindowManager {
 
     var hasOpenConsoles: Bool { !controllers.isEmpty }
 
-    func open(vm: VM, address: VMAddress) {
+    /// No address needed: the view model follows the VM's row, shows a
+    /// placeholder while there is no session and connects once there is one.
+    func open(vm: VM) {
         if let existing = controllers[vm.id] {
             existing.window?.makeKeyAndOrderFront(nil)
             return
         }
-        let viewModel = ConsoleViewModel(vm: vm, address: address, model: model)
+        let viewModel = ConsoleViewModel(vm: vm, model: model)
         let controller = ConsoleWindowController(viewModel: viewModel) { [weak self] in self?.controllers[vm.id] = nil }
         controllers[vm.id] = controller
         controller.showWindow(nil)

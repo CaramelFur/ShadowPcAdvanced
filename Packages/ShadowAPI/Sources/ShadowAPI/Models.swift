@@ -130,6 +130,18 @@ public struct VMAddress: Sendable, Equatable {
         while s.hasSuffix("/") { s.removeLast() }
         return URL(string: s)
     }
+
+    /// Identity of one running session. A VM that is stopped and started again
+    /// comes back with a new session id and possibly another host or proxy, so
+    /// nothing minted under one key (proxy token, SPICE ticket) holds for another.
+    public var sessionKey: String {
+        let base = proxyBase?.absoluteString ?? ""
+        // The session id and the proxy are the identity. Only an address without
+        // an id falls back to host and port: taking them always would turn a
+        // harmless change within a session into a reconnect that kicks it.
+        if let sessionID { return "\(sessionID)|\(base)" }
+        return "|\(base)|\(ip):\(port)"
+    }
 }
 
 public struct QueueInfo: Sendable, Equatable {

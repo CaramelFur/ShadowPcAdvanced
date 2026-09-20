@@ -5,7 +5,6 @@ struct VMRow: Identifiable, Equatable {
     enum Activity: Equatable {
         case starting(String)
         case stopping
-        case openingConsole
     }
 
     var vm: VM
@@ -15,8 +14,11 @@ struct VMRow: Identifiable, Equatable {
     var error: String?
 
     var id: String { vm.id }
-    var state: VMState { vm.state(address: address, proxy: signals) }
+    /// A stop we asked for wins: the proxy isn't polled anymore by then.
+    var state: VMState { activity == .stopping ? .stopping : vm.state(address: address, proxy: signals) }
     var isRunning: Bool { address != nil }
+    /// A VM we are shutting down still has an address, but no console URL worth using.
+    var consoleAddress: VMAddress? { activity == .stopping ? nil : address }
 }
 
 @MainActor
@@ -37,6 +39,7 @@ final class AppModel: ObservableObject {
     /// Proxy tokens are minted per (VM, session); re-minting on every 10 s
     /// refresh would be far too heavy.
     private var proxyContexts: [String: (key: String, context: ProxyContext)] = [:]
+    private var proxyMints: [String: (key: String, task: Task<ProxyContext, Error>)] = [:]
     private var statusUnavailableUntil: [String: Date] = [:]
     static let refreshInterval: TimeInterval = 10
 
@@ -89,6 +92,8 @@ final class AppModel: ObservableObject {
         refreshLoop = nil
         rows = []
         proxyContexts = [:]
+        proxyMints = [:]
+        statusUnavailableUntil = [:]
         listError = nil
     }
 
@@ -100,7 +105,14 @@ final class AppModel: ObservableObject {
                 var row = rows.first { $0.id == vm.id } ?? VMRow(vm: vm)
                 row.vm = vm
                 row.address = try await client.launcher.address(vm.id)
-                row.signals = await proxySignals(vmID: vm.id, address: row.address)
+                // The live row, not the copy from before the await: startVM or a
+                // console may have learned the new address meanwhile.
+                let live = rows.first { $0.id == vm.id }
+                if live?.address?.sessionKey != row.address?.sessionKey {
+                    invalidateSession(vm.id, keeping: row.address?.sessionKey)
+                }
+                row.activity = live?.activity
+                row.signals = await proxySignals(vmID: vm.id, address: row.consoleAddress)
                 fresh.append(row)
             }
             // Keep activity/error set while the awaits above were in flight.
@@ -122,21 +134,42 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Cached proxy context for a running VM, minted on demand.
+    /// Cached proxy context for a running VM, minted on demand. It belongs to
+    /// one session (`VMAddress.sessionKey`): a restarted VM never gets the old one.
     func proxyContext(vmID: String, address: VMAddress, forceNew: Bool = false) async throws -> ProxyContext {
-        let key = "\(address.sessionID ?? "")|\(address.proxyBase?.absoluteString ?? "")"
+        let key = address.sessionKey
         if !forceNew, let cached = proxyContexts[vmID], cached.key == key { return cached.context }
-        let ctx = try await client.launcher.proxyContext(vmID, address: address)
-        proxyContexts[vmID] = (key, ctx)
+        // The refresh loop and a console tend to ask at the same moment (VM just
+        // came up): share one mint instead of racing two tokens.
+        if let pending = proxyMints[vmID], pending.key == key { return try await pending.task.value }
+        let task = Task { [client] in try await client.launcher.proxyContext(vmID, address: address) }
+        proxyMints[vmID] = (key, task)
+        let result = await task.result
+        // Invalidated while minting (VM stopped or restarted): hand the token to
+        // the caller, whose session check decides, but keep it out of the cache.
+        let current = proxyMints[vmID]?.task == task
+        if current { proxyMints[vmID] = nil }
+        let ctx = try result.get()
+        if current { proxyContexts[vmID] = (key, ctx) }
         return ctx
+    }
+
+    /// Nothing minted for a session survives it: called when the VM stops, is
+    /// being stopped, or shows up with another session id or proxy. `keeping`:
+    /// the session being switched to, which refresh(), startVM and a console can
+    /// all announce within the same moment; its token (or the mint under way)
+    /// must not be thrown away by whoever comes second.
+    private func invalidateSession(_ vmID: String, keeping key: String? = nil) {
+        if proxyContexts[vmID]?.key != key { proxyContexts[vmID] = nil }
+        if proxyMints[vmID]?.key != key { proxyMints[vmID] = nil }
+        statusUnavailableUntil[vmID] = nil
     }
 
     /// `consoleOpen`: a console registers the launcher client, which is what
     /// makes the proxy answer /status at all.
     func proxySignals(vmID: String, address: VMAddress?, consoleOpen: Bool = false) async -> VMStatusSignals? {
         guard let address else {
-            proxyContexts[vmID] = nil
-            statusUnavailableUntil[vmID] = nil
+            invalidateSession(vmID)
             return nil
         }
         if consoleOpen {
@@ -163,6 +196,17 @@ final class AppModel: ObservableObject {
         change(&rows[i])
     }
 
+    /// An address learned between refreshes (VM just started, or a console's
+    /// Reconnect asked the API). Consoles watch the row, so it has to be current.
+    func noteAddress(_ address: VMAddress?, for vmID: String) {
+        guard let row = rows.first(where: { $0.id == vmID }), row.address != address else { return }
+        if row.address?.sessionKey != address?.sessionKey { invalidateSession(vmID, keeping: address?.sessionKey) }
+        update(vmID) {
+            $0.address = address
+            if address == nil { $0.signals = nil }
+        }
+    }
+
     // MARK: - actions
 
     func startVM(_ vmID: String) async {
@@ -178,7 +222,7 @@ final class AppModel: ObservableObject {
                     let parts = [q.position.map { "pos \($0)" }, q.estimatedTime.map { "eta \($0) s" }].compactMap { $0 }
                     update(vmID) { $0.activity = .starting("queued" + (parts.isEmpty ? "…" : " (\(parts.joined(separator: ", ")))")) }
                 case .ready(let address):
-                    update(vmID) { $0.address = address }
+                    noteAddress(address, for: vmID)
                 }
             }
             update(vmID) { $0.activity = nil }
@@ -192,6 +236,7 @@ final class AppModel: ObservableObject {
         update(vmID) { $0.activity = .stopping; $0.error = nil }
         do {
             try await client.launcher.stop(vmID)
+            invalidateSession(vmID)
             // The address disappears once the VM is really down.
             for _ in 0..<12 {
                 try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -204,14 +249,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func openConsole(_ vmID: String) async {
+    /// Works in any state: without a session the window shows a placeholder
+    /// and connects by itself once the VM is up.
+    func openConsole(_ vmID: String) {
         guard let row = rows.first(where: { $0.id == vmID }) else { return }
-        update(vmID) { $0.activity = .openingConsole; $0.error = nil }
-        defer { update(vmID) { $0.activity = nil } }
-        guard let address = row.address else {
-            update(vmID) { $0.error = "The VM has no address yet — start it first." }
-            return
-        }
-        consoles.open(vm: row.vm, address: address)
+        consoles.open(vm: row.vm)
     }
 }

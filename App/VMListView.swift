@@ -83,8 +83,8 @@ struct VMRowView: View {
                 .disabled(busy || row.isRunning || row.state == .maintenance)
             Button("Stop") { Task { await model.stopVM(row.id) } }
                 .disabled(busy || !row.isRunning)
-            Button("Open Console") { Task { await model.openConsole(row.id) } }
-                .disabled(busy || !row.isRunning)
+            // Always available: without a session the window waits and connects by itself.
+            Button("Open Console") { model.openConsole(row.id) }
             Button("Network") {
                 if let address = row.address { showNetwork(VMNetworkTarget(vm: row.vm, address: address)) }
             }
@@ -96,7 +96,6 @@ struct VMRowView: View {
         switch row.activity {
         case .starting(let text): return text
         case .stopping: return "stopping…"
-        case .openingConsole: return "opening console…"
         case nil: return nil
         }
     }
