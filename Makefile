@@ -4,6 +4,8 @@ CONFIG   ?= Release
 XCODEGEN := ThirdParty/tools/bin/xcodegen
 DERIVED  := build/DerivedData
 APP      := $(DERIVED)/Build/Products/$(CONFIG)/FunkyShadow.app
+# Where every successful build is put for the user: next to the repo.
+DIST     ?= ../FunkyShadow.app
 
 .PHONY: xcodegen deps project build run test clean
 
@@ -20,8 +22,13 @@ deps:            ## build spice-client-glib + dependencies into ThirdParty/prefi
 project:         ## (re)generate FunkyShadow.xcodeproj from project.yml
 	$(XCODEGEN) generate --quiet
 
-build: project   ## command-line build
-	xcodebuild -project FunkyShadow.xcodeproj -scheme FunkyShadow -configuration $(CONFIG) -derivedDataPath $(DERIVED) build | tail -3
+build: project   ## command-line build; a good build is also copied to $(DIST)
+	@mkdir -p build
+	@if xcodebuild -project FunkyShadow.xcodeproj -scheme FunkyShadow -configuration $(CONFIG) -derivedDataPath $(DERIVED) build > build/xcodebuild.log 2>&1; then \
+		rm -rf "$(DIST)" && ditto "$(APP)" "$(DIST)" && echo "BUILD SUCCEEDED → $(DIST)"; \
+	else \
+		grep -n "error:" build/xcodebuild.log | sort -u | head -40; echo "BUILD FAILED (full log: build/xcodebuild.log)"; exit 1; \
+	fi
 
 run: build
 	open $(APP)

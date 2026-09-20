@@ -132,6 +132,28 @@ static void cs_display_monitors(SpiceChannel *channel, GParamSpec *pspec,
     g_clear_pointer(&cfgs, g_array_unref);
 }
 
+// FunkyShadow: a primary surface is enough to announce a display; don't depend
+// on the server ever sending a monitors config (see cs_update_monitor_area).
+static void cs_display_primary_created(SpiceChannel *channel, gint format,
+                                       gint width, gint height, gint stride,
+                                       gint shmid, gpointer imgdata, gpointer data)
+{
+    CSConnection *self = (__bridge CSConnection *)data;
+
+    for (CSChannel *candidate in self.channels) {
+        if (candidate.spiceChannel == channel && [candidate isKindOfClass:CSDisplay.class]) {
+            CSDisplay *display = (CSDisplay *)candidate;
+            if (display.hasInitialConfig) {
+                [self.delegate spiceDisplayUpdated:self display:display];
+            } else {
+                display.hasInitialConfig = YES;
+                [self.delegate spiceDisplayCreated:self display:display];
+            }
+            break;
+        }
+    }
+}
+
 static void cs_main_agent_update(SpiceChannel *main, gpointer data)
 {
     CSConnection *self = (__bridge CSConnection *)data;
@@ -222,6 +244,8 @@ static void cs_channel_new(SpiceSession *s, SpiceChannel *channel, gpointer data
         [self.mutableChannels addObject:display];
         g_signal_connect_after(channel, "notify::monitors",
                                G_CALLBACK(cs_display_monitors), (__bridge void *)self);
+        g_signal_connect_after(channel, "display-primary-create",
+                               G_CALLBACK(cs_display_primary_created), (__bridge void *)self);
         display.isEnabled = YES;
         // find and connect to any existing cursor channel
         for (CSChannel *candidate in self.channels) {
@@ -299,6 +323,7 @@ static void cs_channel_destroy(SpiceSession *s, SpiceChannel *channel, gpointer 
     if (SPICE_IS_DISPLAY_CHANNEL(channel)) {
         SPICE_DEBUG("zap display channel (#%d)", chid);
         g_signal_handlers_disconnect_by_func(channel, G_CALLBACK(cs_display_monitors), (__bridge void *)self);
+        g_signal_handlers_disconnect_by_func(channel, G_CALLBACK(cs_display_primary_created), (__bridge void *)self);
     }
     
     if (SPICE_IS_INPUTS_CHANNEL(channel)) {

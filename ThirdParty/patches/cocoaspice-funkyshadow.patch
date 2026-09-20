@@ -1,6 +1,6 @@
 diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
---- a/CocoaSpice/CSConnection.m	2026-09-20 04:33:33
-+++ b/CocoaSpice/CSConnection.m	2026-09-20 04:33:33
+--- a/CocoaSpice/CSConnection.m	2026-09-20 04:40:58
++++ b/CocoaSpice/CSConnection.m	2026-09-20 04:40:58
 @@ -38,6 +38,7 @@
  @property (nonatomic, readwrite) SpiceSession *spiceSession;
  @property (nonatomic, readwrite) SpiceMainChannel *spiceMain;
@@ -21,7 +21,36 @@ diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
                  case SPICE_CHANNEL_ERROR_CONNECT: code = kCSConnectionErrorConnect; break;
                  default: code = kCSConnectionErrorUnknown; break;
              }
-@@ -171,6 +174,23 @@
+@@ -129,6 +132,28 @@
+     g_clear_pointer(&cfgs, g_array_unref);
+ }
+ 
++// FunkyShadow: a primary surface is enough to announce a display; don't depend
++// on the server ever sending a monitors config (see cs_update_monitor_area).
++static void cs_display_primary_created(SpiceChannel *channel, gint format,
++                                       gint width, gint height, gint stride,
++                                       gint shmid, gpointer imgdata, gpointer data)
++{
++    CSConnection *self = (__bridge CSConnection *)data;
++
++    for (CSChannel *candidate in self.channels) {
++        if (candidate.spiceChannel == channel && [candidate isKindOfClass:CSDisplay.class]) {
++            CSDisplay *display = (CSDisplay *)candidate;
++            if (display.hasInitialConfig) {
++                [self.delegate spiceDisplayUpdated:self display:display];
++            } else {
++                display.hasInitialConfig = YES;
++                [self.delegate spiceDisplayCreated:self display:display];
++            }
++            break;
++        }
++    }
++}
++
+ static void cs_main_agent_update(SpiceChannel *main, gpointer data)
+ {
+     CSConnection *self = (__bridge CSConnection *)data;
+@@ -171,6 +196,23 @@
      }
  }
  
@@ -45,7 +74,7 @@ diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
  static void cs_channel_new(SpiceSession *s, SpiceChannel *channel, gpointer data)
  {
      CSConnection *self = (__bridge CSConnection *)data;
-@@ -178,6 +198,11 @@
+@@ -178,6 +220,11 @@
      
      g_object_get(channel, "channel-id", &chid, NULL);
      SPICE_DEBUG("new channel (#%d)", chid);
@@ -57,7 +86,16 @@ diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
      
      if (SPICE_IS_MAIN_CHANNEL(channel)) {
          SPICE_DEBUG("new main channel");
-@@ -262,6 +287,7 @@
+@@ -197,6 +244,8 @@
+         [self.mutableChannels addObject:display];
+         g_signal_connect_after(channel, "notify::monitors",
+                                G_CALLBACK(cs_display_monitors), (__bridge void *)self);
++        g_signal_connect_after(channel, "display-primary-create",
++                               G_CALLBACK(cs_display_primary_created), (__bridge void *)self);
+         display.isEnabled = YES;
+         // find and connect to any existing cursor channel
+         for (CSChannel *candidate in self.channels) {
+@@ -262,6 +311,7 @@
      int chid;
      
      g_object_get(channel, "channel-id", &chid, NULL);
@@ -65,7 +103,15 @@ diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
      if (SPICE_IS_MAIN_CHANNEL(channel)) {
          SPICE_DEBUG("[CocoaSpice] %s:%d", __FUNCTION__, __LINE__);
          SPICE_DEBUG("zap main channel");
-@@ -468,11 +494,45 @@
+@@ -273,6 +323,7 @@
+     if (SPICE_IS_DISPLAY_CHANNEL(channel)) {
+         SPICE_DEBUG("zap display channel (#%d)", chid);
+         g_signal_handlers_disconnect_by_func(channel, G_CALLBACK(cs_display_monitors), (__bridge void *)self);
++        g_signal_handlers_disconnect_by_func(channel, G_CALLBACK(cs_display_primary_created), (__bridge void *)self);
+     }
+     
+     if (SPICE_IS_INPUTS_CHANNEL(channel)) {
+@@ -468,11 +519,45 @@
      return self;
  }
  
@@ -112,8 +158,8 @@ diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
  }
  
 diff --color -ruN a/CocoaSpice/CSDisplay.m b/CocoaSpice/CSDisplay.m
---- a/CocoaSpice/CSDisplay.m	2026-09-20 04:33:33
-+++ b/CocoaSpice/CSDisplay.m	2026-09-20 04:33:33
+--- a/CocoaSpice/CSDisplay.m	2026-09-20 04:40:58
++++ b/CocoaSpice/CSDisplay.m	2026-09-20 04:40:58
 @@ -80,7 +80,16 @@
      CSDisplay *self = (__bridge CSDisplay *)data;
  
@@ -132,9 +178,26 @@ diff --color -ruN a/CocoaSpice/CSDisplay.m b/CocoaSpice/CSDisplay.m
      self.canvasArea = CGRectMake(0, 0, width, height);
      self.canvasFormat = format;
      self.canvasStride = stride;
+@@ -165,12 +174,10 @@
+     if (monitors->len == 0) {
+         SPICE_DEBUG("[CocoaSpice] update monitor: no monitor %d", (int)self.monitorID);
+         self.ready = NO;
+-        if (spice_channel_test_capability(SPICE_CHANNEL(self.channel),
+-                                          SPICE_DISPLAY_CAP_MONITORS_CONFIG)) {
+-            SPICE_DEBUG("[CocoaSpice] waiting until MonitorsConfig is received");
+-            g_clear_pointer(&monitors, g_array_unref);
+-            return;
+-        }
++        // FunkyShadow: upstream waits here for a MonitorsConfig message when the
++        // server advertises the capability. A server that never sends one would
++        // leave the screen black forever, so show the whole surface meanwhile;
++        // a config that does arrive simply replaces it.
+         goto whole;
+     }
+     c = &g_array_index(monitors, SpiceDisplayMonitorConfig, 0);
 diff --color -ruN a/CocoaSpice/CSMain.m b/CocoaSpice/CSMain.m
---- a/CocoaSpice/CSMain.m	2026-09-20 04:33:33
-+++ b/CocoaSpice/CSMain.m	2026-09-20 04:33:33
+--- a/CocoaSpice/CSMain.m	2026-09-20 04:40:58
++++ b/CocoaSpice/CSMain.m	2026-09-20 04:40:58
 @@ -18,7 +18,6 @@
  #import <glib.h>
  #import <spice-client.h>
@@ -218,8 +281,8 @@ diff --color -ruN a/CocoaSpice/CSMain.m b/CocoaSpice/CSMain.m
              g_main_context_wakeup(_main_context);
              pthread_join(self.spiceThread, &status);
 diff --color -ruN a/CocoaSpice/include/CSConnection.h b/CocoaSpice/include/CSConnection.h
---- a/CocoaSpice/include/CSConnection.h	2026-09-20 04:33:33
-+++ b/CocoaSpice/include/CSConnection.h	2026-09-20 04:33:33
+--- a/CocoaSpice/include/CSConnection.h	2026-09-20 04:40:58
++++ b/CocoaSpice/include/CSConnection.h	2026-09-20 04:40:58
 @@ -23,6 +23,10 @@
  
  NS_ASSUME_NONNULL_BEGIN
@@ -244,8 +307,8 @@ diff --color -ruN a/CocoaSpice/include/CSConnection.h b/CocoaSpice/include/CSCon
  /// Connects to SPICE server
  ///
 diff --color -ruN a/CocoaSpice/include/CSCursor.h b/CocoaSpice/include/CSCursor.h
---- a/CocoaSpice/include/CSCursor.h	2026-09-20 04:33:33
-+++ b/CocoaSpice/include/CSCursor.h	2026-09-20 04:33:33
+--- a/CocoaSpice/include/CSCursor.h	2026-09-20 04:40:58
++++ b/CocoaSpice/include/CSCursor.h	2026-09-20 04:40:58
 @@ -15,7 +15,7 @@
  //
  
@@ -256,8 +319,8 @@ diff --color -ruN a/CocoaSpice/include/CSCursor.h b/CocoaSpice/include/CSCursor.
  @class CSDisplay;
  
 diff --color -ruN a/CocoaSpice/include/CSDisplay.h b/CocoaSpice/include/CSDisplay.h
---- a/CocoaSpice/include/CSDisplay.h	2026-09-20 04:33:33
-+++ b/CocoaSpice/include/CSDisplay.h	2026-09-20 04:33:33
+--- a/CocoaSpice/include/CSDisplay.h	2026-09-20 04:40:58
++++ b/CocoaSpice/include/CSDisplay.h	2026-09-20 04:40:58
 @@ -17,7 +17,7 @@
  #import <Foundation/Foundation.h>
  #import "CSChannel.h"
@@ -268,8 +331,8 @@ diff --color -ruN a/CocoaSpice/include/CSDisplay.h b/CocoaSpice/include/CSDispla
  @class CSCursor;
  @class CSScreenshot;
 diff --color -ruN a/CocoaSpiceRenderer/CSMetalRenderer.m b/CocoaSpiceRenderer/CSMetalRenderer.m
---- a/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-20 04:33:33
-+++ b/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-20 04:33:33
+--- a/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-20 04:40:58
++++ b/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-20 04:40:58
 @@ -134,8 +134,8 @@
          
          // Load all the shader files with a .metal file extension in the project

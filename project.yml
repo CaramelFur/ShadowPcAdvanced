@@ -81,10 +81,9 @@ targets:
         ENABLE_HARDENED_RUNTIME: NO
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         GCC_WARN_INHIBIT_ALL_WARNINGS: NO
-      configs:
-        Release:
-          # CocoaSpice asserts on things a remote server decides (monitor count…).
-          GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "G_DISABLE_ASSERT=1", "NDEBUG=1"]
+        # CocoaSpice asserts on things a remote server decides (monitor count…);
+        # that must never abort the app, in any configuration.
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "G_DISABLE_ASSERT=1", "NDEBUG=1"]
     preBuildScripts:
       - name: Check SPICE libraries
         basedOnDependencyAnalysis: false

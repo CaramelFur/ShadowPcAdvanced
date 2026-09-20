@@ -174,12 +174,10 @@ static void cs_update_monitor_area(SpiceChannel *channel, GParamSpec *pspec, gpo
     if (monitors->len == 0) {
         SPICE_DEBUG("[CocoaSpice] update monitor: no monitor %d", (int)self.monitorID);
         self.ready = NO;
-        if (spice_channel_test_capability(SPICE_CHANNEL(self.channel),
-                                          SPICE_DISPLAY_CAP_MONITORS_CONFIG)) {
-            SPICE_DEBUG("[CocoaSpice] waiting until MonitorsConfig is received");
-            g_clear_pointer(&monitors, g_array_unref);
-            return;
-        }
+        // FunkyShadow: upstream waits here for a MonitorsConfig message when the
+        // server advertises the capability. A server that never sends one would
+        // leave the screen black forever, so show the whole surface meanwhile;
+        // a config that does arrive simply replaces it.
         goto whole;
     }
     c = &g_array_index(monitors, SpiceDisplayMonitorConfig, 0);
