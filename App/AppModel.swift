@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
     /// Proxy tokens are minted per (VM, session); re-minting on every 10 s
     /// refresh would be far too heavy.
     private var proxyContexts: [String: (key: String, context: ProxyContext)] = [:]
+    private var statusUnavailableUntil: [String: Date] = [:]
     static let refreshInterval: TimeInterval = 10
 
     private init() {
@@ -130,13 +131,27 @@ final class AppModel: ObservableObject {
         return ctx
     }
 
-    func proxySignals(vmID: String, address: VMAddress?) async -> VMStatusSignals? {
+    /// `consoleOpen`: a console registers the launcher client, which is what
+    /// makes the proxy answer /status at all.
+    func proxySignals(vmID: String, address: VMAddress?, consoleOpen: Bool = false) async -> VMStatusSignals? {
         guard let address else {
             proxyContexts[vmID] = nil
+            statusUnavailableUntil[vmID] = nil
+            return nil
+        }
+        if consoleOpen {
+            statusUnavailableUntil[vmID] = nil
+        } else if let until = statusUnavailableUntil[vmID], Date() < until {
             return nil
         }
         guard let ctx = try? await proxyContext(vmID: vmID, address: address) else { return nil }
         let first = await client.proxy.statusResponse(ctx)
+        if first.clientMissing {
+            // Not an auth problem, so don't burn a token re-mint on it; ask again
+            // in a minute (shadow-cli or a console may register the client meanwhile).
+            statusUnavailableUntil[vmID] = Date().addingTimeInterval(60)
+            return nil
+        }
         guard first.code == 401 || first.code == 403 else { return first.signals }
         // Proxy token expired: mint once more.
         guard let renewed = try? await proxyContext(vmID: vmID, address: address, forceNew: true) else { return nil }

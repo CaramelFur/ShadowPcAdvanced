@@ -79,7 +79,9 @@ final class ConsoleViewModel: ObservableObject {
     }
 
     private func pollStatus() async {
-        let signals = await model.proxySignals(vmID: vm.id, address: address)
+        // Until the ticket exists the launcher client isn't registered and /status would 401.
+        guard ticket != nil else { return }
+        let signals = await model.proxySignals(vmID: vm.id, address: address, consoleOpen: true)
         guard let label = signals?.label else {
             statusLabel = "unreachable"
             statusColor = .orange

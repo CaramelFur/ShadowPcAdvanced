@@ -89,10 +89,12 @@ if ! have spice-client-glib-2.0; then
     fetch https://www.spice-space.org/download/gtk/spice-gtk-0.42.tar.xz 9380117f1811ad1faa1812cb6602479b6290d4a0d8cc442d44427f7f6c0e7a58
     unpack spice-gtk-0.42.tar.xz spice-gtk-0.42
     patch -f -d "$BUILD/spice-gtk-0.42" -p2 < "$ROOT/patches/spice-gtk-0.42-macos-no-gstreamer.patch" > "$LOGS/spice-gtk-patch.log"
+    # coroutine=ucontext (upstream's default on macOS): in-thread context switches. The gthread
+    # backend hands every draw op and socket wait between two threads and is far too slow.
     # The venv python (with pyparsing/six) must be the one meson finds.
     PATH="$VENV/bin:$PATH" meson_build spice-gtk spice-gtk-0.42 \
         -Dgtk=disabled -Dwayland-protocols=disabled -Dwebdav=disabled -Dbuiltin-mjpeg=true \
-        -Dusbredir=disabled -Dlibcap-ng=disabled -Dpolkit=disabled -Dcoroutine=gthread \
+        -Dusbredir=disabled -Dlibcap-ng=disabled -Dpolkit=disabled -Dcoroutine=ucontext \
         -Dintrospection=disabled -Dvapi=disabled -Dlz4=disabled -Dsasl=disabled -Dopus=disabled \
         -Dsmartcard=disabled -Degl=disabled -Dgtk_doc=disabled
 fi

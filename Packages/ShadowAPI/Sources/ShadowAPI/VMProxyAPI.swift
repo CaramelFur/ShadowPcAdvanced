@@ -13,9 +13,13 @@ public final class VMProxyAPI: Sendable {
 
     /// Same, plus the HTTP status so callers can tell an expired proxy token
     /// (401/403) from an unreachable VM (`code == nil`).
-    public func statusResponse(_ proxy: ProxyContext) async -> (code: Int?, signals: VMStatusSignals?) {
-        guard let r = try? await http.api("GET", proxy.url("/status"), bearer: proxy.token) else { return (nil, nil) }
-        return (r.status, r.isSuccess ? VMStatusSignals(json: r.json?.unwrapped) : nil)
+    public func statusResponse(_ proxy: ProxyContext) async -> (code: Int?, signals: VMStatusSignals?, clientMissing: Bool) {
+        guard let r = try? await http.api("GET", proxy.url("/status"), bearer: proxy.token) else { return (nil, nil, false) }
+        // The proxy only answers /status for a *registered* launcher client
+        // (POST /clients, i.e. while a console is open). Otherwise it says 401
+        // "No registered client with id …" — the token itself is fine.
+        let missing = r.status == 401 && r.errorMessage.localizedCaseInsensitiveContains("no registered client")
+        return (r.status, r.isSuccess ? VMStatusSignals(json: r.json?.unwrapped) : nil, missing)
     }
 
     /// Creates the launcher client, which provisions the SPICE ticket.

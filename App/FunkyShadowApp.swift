@@ -57,6 +57,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         AppModel.shared.start()
+        // `FunkyShadow --bench-splice ws://127.0.0.1:8765/`: splice throughput (diagnostics).
+        if let i = CommandLine.arguments.firstIndex(of: "--bench-splice"), i + 1 < CommandLine.arguments.count,
+           let url = URL(string: CommandLine.arguments[i + 1]) {
+            DispatchQueue.global().async { SpiceSplice.benchmark(url: url) }
+            return
+        }
         // `FunkyShadow --dump-windows`: print window/modal state after launch (diagnostics).
         if CommandLine.arguments.contains("--dump-windows") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { AppDelegate.dumpWindows() }

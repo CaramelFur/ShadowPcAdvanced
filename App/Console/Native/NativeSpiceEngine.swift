@@ -158,6 +158,7 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
     }
 
     func screenshotPNG() async throws -> Data {
+        bridge.framebuffer.flush()
         guard let png = bridge.framebuffer.pngData() else { throw ShadowError.decoding("no display yet") }
         return png
     }
@@ -175,6 +176,44 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
     /// Headless smoke test: no VM needed. A channel must ask for its transport
     /// (proving the GLib thread, session and open-fd plumbing work) and the
     /// failed link must be reported rather than crash or hang.
+    /// Deterministic 24-bit test pattern (split up to keep the type checker fast).
+    private static func testPixel(_ index: Int) -> UInt32 {
+        let hashed: Int = index &* 2_654_435_761
+        let low = UInt32(truncatingIfNeeded: hashed)
+        return low & 0x00FF_FFFF
+    }
+
+    /// Framebuffer copy: pixels intact, alpha forced opaque, and how long a
+    /// full 2560×1440 frame takes.
+    static func framebufferSelfTest() -> Bool {
+        let w = 2560, h = 1440, stride = w * 4
+        let source = UnsafeMutablePointer<UInt8>.allocate(capacity: stride * h)
+        defer { source.deallocate() }
+        source.withMemoryRebound(to: UInt32.self, capacity: w * h) { px in
+            for i in 0..<(w * h) { px[i] = testPixel(i) } // alpha byte = 0
+        }
+        let fb = SpiceFramebuffer()
+        fb.create(format: 32, width: w, height: h, stride: stride, data: source)
+        let start = Date()
+        let flushed = fb.flush()
+        let ms = Date().timeIntervalSince(start) * 1000
+        guard flushed, let surface = fb.currentSurface else { print("framebuffer: FAILED (no flush)"); return false }
+        surface.lock(options: .readOnly, seed: nil)
+        var ok = true
+        let base = surface.baseAddress.assumingMemoryBound(to: UInt8.self)
+        for (x, y) in [(0, 0), (1, 0), (w - 1, 0), (1234, 777), (w - 1, h - 1)] {
+            let got = UnsafeRawPointer(base + y * surface.bytesPerRow + x * 4).load(as: UInt32.self)
+            let want: UInt32 = testPixel(y * w + x) | 0xFF00_0000
+            if got != want { ok = false; print(String(format: "framebuffer: pixel (%d,%d) = %08x, want %08x", x, y, got, want)) }
+        }
+        surface.unlock(options: .readOnly, seed: nil)
+        // A small dirty rect must not touch anything else.
+        fb.invalidate(x: 10, y: 10, width: 5, height: 5)
+        ok = ok && fb.flush() && !fb.flush() && fb.pngData() != nil
+        print(String(format: "framebuffer: %@, full 2560x1440 copy %.1f ms", ok ? "ok" : "FAILED", ms))
+        return ok
+    }
+
     static func selfTest() async -> Bool {
         let engine = NativeSpiceEngine()
         engine.ticketProvider = { _ in
@@ -183,6 +222,7 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
         var lines: [String] = []
         let collector = Task { for await e in engine.events { if case .log(let l) = e { lines.append(l); print("  \(l)") } } }
         print("spice-glib \(libraryVersion)")
+        guard framebufferSelfTest() else { return false }
         await engine.connect(fresh: false)
         try? await Task.sleep(nanoseconds: 3_000_000_000)
         await engine.disconnect()
@@ -262,12 +302,7 @@ private final class Bridge: @unchecked Sendable {
     private var target: URL?
     private var splices: [SpiceSplice] = []
     private var presentPending = false
-    private let session: URLSession = {
-        let cfg = URLSessionConfiguration.ephemeral
-        cfg.httpCookieStorage = nil
-        cfg.urlCache = nil
-        return URLSession(configuration: cfg)
-    }()
+    private let renderQueue = DispatchQueue(label: "spice-render", qos: .userInteractive)
     private let userAgent = ShadowConfig.fromEnvironment().userAgent
 
     static func from(_ ctx: UnsafeMutableRawPointer?) -> Bridge { Unmanaged<Bridge>.fromOpaque(ctx!).takeUnretainedValue() }
@@ -293,7 +328,7 @@ private final class Bridge: @unchecked Sendable {
     func openFD(type: Int32, id: Int32) -> Int32 {
         guard let url = lock.withLock({ target }) else { return -1 }
         let label = "ch\(type).\(id)"
-        guard let opened = SpiceSplice.open(url: url, session: session, userAgent: userAgent, label: label, log: { [weak self] line in
+        guard let opened = SpiceSplice.open(url: url, userAgent: userAgent, label: label, log: { [weak self] line in
             self?.onMain { $0.log(line) }
         }) else { return -1 }
         lock.withLock { splices.append(opened.splice) }
@@ -314,12 +349,14 @@ private final class Bridge: @unchecked Sendable {
             return true
         }
         guard first else { return }
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 16_000_000)
+        renderQueue.asyncAfter(deadline: .now() + .milliseconds(16)) { [weak self] in
             guard let self else { return }
-            // Cleared before presenting, so a later invalidate is never lost.
+            // Cleared before copying, so a later invalidate is never lost.
             self.lock.withLock { self.presentPending = false }
-            self.engine?.present()
+            // The pixel copy happens here — not on the GLib thread (it would stall
+            // decoding) and not on the main thread (it would stall the UI).
+            self.framebuffer.flush()
+            self.onMain { $0.present() }
         }
     }
 }
