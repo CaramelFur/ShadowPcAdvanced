@@ -23,6 +23,11 @@ final class RawWebSocket: @unchecked Sendable {
     private var buffer = Data()
     private var handshakeDone = false
     private var finished = false
+    /// Frames handed in before the 101: spice-glib writes its link header the
+    /// moment it has a socket, which is before TLS is even up. Sent in order
+    /// once the handshake is done; anything earlier would go out ahead of the
+    /// upgrade request and nginx answers that with 400.
+    private var pending: [(Data, (Error?) -> Void)] = []
 
     // Frame parser state.
     private var payloadLeft = 0
@@ -63,8 +68,15 @@ final class RawWebSocket: @unchecked Sendable {
 
     /// Sends one binary frame. `completion` runs on the socket's queue.
     func send(_ payload: Data, completion: @escaping (Error?) -> Void) {
-        connection.send(content: Self.frame(opcode: 0x2, payload: payload), completion: .contentProcessed { completion($0) })
+        let frame = Self.frame(opcode: 0x2, payload: payload)
+        queue.async { [self] in
+            if finished { return completion(SocketError.closed) }
+            guard handshakeDone else { return pending.append((frame, completion)) }
+            connection.send(content: frame, completion: .contentProcessed { completion($0) })
+        }
     }
+
+    enum SocketError: Error { case closed }
 
     func close() {
         queue.async { [self] in
@@ -123,6 +135,10 @@ final class RawWebSocket: @unchecked Sendable {
             return false
         }
         handshakeDone = true
+        for (frame, completion) in pending {
+            connection.send(content: frame, completion: .contentProcessed { completion($0) })
+        }
+        pending.removeAll()
         return true
     }
 
@@ -229,6 +245,9 @@ final class RawWebSocket: @unchecked Sendable {
         finished = true
         connection.stateUpdateHandler = nil
         connection.cancel()
+        // A sender waiting for one of these must not wait forever.
+        for (_, completion) in pending { completion(SocketError.closed) }
+        pending.removeAll()
         if let reason { onClose?(reason) }
         onData = nil
         onClose = nil
