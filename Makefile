@@ -4,9 +4,10 @@ CONFIG   ?= Release
 XCODEGEN := ThirdParty/tools/bin/xcodegen
 DERIVED  := build/DerivedData
 APP      := $(DERIVED)/Build/Products/$(CONFIG)/ShadowPcAdvanced.app
-# Where every successful build is installed: /Applications, and `make run`
-# launches that copy.
-DIST     ?= /Applications/ShadowPcAdvanced.app
+# Every successful build lands next to the repo, and is then installed into
+# /Applications; `make run` launches the installed copy.
+DIST     ?= ../ShadowPcAdvanced.app
+INSTALL  ?= /Applications/ShadowPcAdvanced.app
 
 .PHONY: xcodegen deps project build run test clean
 
@@ -23,16 +24,17 @@ deps:            ## build spice-client-glib + dependencies into ThirdParty/prefi
 project:         ## (re)generate ShadowPcAdvanced.xcodeproj from project.yml
 	$(XCODEGEN) generate --quiet
 
-build: project   ## command-line build; a good build is also copied to $(DIST)
+build: project   ## command-line build; a good build is copied to $(DIST) and installed to $(INSTALL)
 	@mkdir -p build
 	@if xcodebuild -project ShadowPcAdvanced.xcodeproj -scheme ShadowPcAdvanced -configuration $(CONFIG) -derivedDataPath $(DERIVED) build > build/xcodebuild.log 2>&1; then \
 		rm -rf "$(DIST)" && ditto "$(APP)" "$(DIST)" && echo "BUILD SUCCEEDED → $(DIST)"; \
+		rm -rf "$(INSTALL)" && ditto "$(DIST)" "$(INSTALL)" && echo "installed  → $(INSTALL)"; \
 	else \
 		grep -n "error:" build/xcodebuild.log | sort -u | head -40; echo "BUILD FAILED (full log: build/xcodebuild.log)"; exit 1; \
 	fi
 
-run: build       ## build, install to $(DIST) and launch it from there
-	@pkill -x ShadowPcAdvanced 2>/dev/null; sleep 1; open "$(DIST)"
+run: build       ## build, install, and launch the installed copy
+	@pkill -x ShadowPcAdvanced 2>/dev/null; sleep 1; open "$(INSTALL)"
 
 test:            ## ShadowAPI unit tests
 	swift test --package-path Packages/ShadowAPI
