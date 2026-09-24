@@ -64,7 +64,13 @@ enum ConsoleEngineKind: String, CaseIterable, Identifiable {
     @MainActor
     func make() -> ConsoleEngine {
         switch self {
-        case .metal: return CocoaSpiceEngine()
+        case .metal:
+            let engine = CocoaSpiceEngine()
+            if engine.hasRenderer { return engine }
+            // Never a crash, never a black window: say why and use the classic renderer.
+            let classic = NativeSpiceEngine()
+            classic.note("Metal renderer unavailable (\(CSMetalRenderer.lastInitializationError ?? "unknown reason")) — using the classic renderer for this console")
+            return classic
         case .native: return NativeSpiceEngine()
         case .web: return WebSpiceEngine()
         }

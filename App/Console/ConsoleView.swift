@@ -10,19 +10,13 @@ struct ConsoleView: View {
                 ConsoleToolbar(viewModel: viewModel)
                 Divider()
             }
-            HStack(spacing: 0) {
-                if viewModel.logVisible, !viewModel.isFullScreen {
-                    ConsoleLogPane(lines: viewModel.logLines)
-                    Divider()
-                }
-                // The engine view stays mounted underneath (a web engine keeps
-                // loading its page); without a session the placeholder covers it.
-                ZStack {
-                    EngineView(view: viewModel.engine.view)
-                        .allowsHitTesting(viewModel.hasSession)
-                    if let placeholder = viewModel.placeholder {
-                        ConsolePlaceholderView(viewModel: viewModel, placeholder: placeholder)
-                    }
+            // The engine view stays mounted underneath (a web engine keeps
+            // loading its page); without a session the placeholder covers it.
+            ZStack {
+                EngineView(view: viewModel.engine.view)
+                    .allowsHitTesting(viewModel.hasSession)
+                if let placeholder = viewModel.placeholder {
+                    ConsolePlaceholderView(viewModel: viewModel, placeholder: placeholder)
                 }
             }
         }
@@ -68,31 +62,6 @@ private struct ConsolePlaceholderView: View {
 }
 
 /// SPICE link messages live here, never in the header.
-private struct ConsoleLogPane: View {
-    let lines: [String]
-
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                        Text(line)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .id(index)
-                    }
-                }
-                .padding(8)
-            }
-            .onChange(of: lines.count) { count in proxy.scrollTo(count - 1, anchor: .bottom) }
-        }
-        .frame(width: 260)
-        .background(Color(nsColor: .underPageBackgroundColor))
-    }
-}
-
 private struct EngineView: NSViewRepresentable {
     let view: NSView
     func makeNSView(context: Context) -> NSView { view }

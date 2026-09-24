@@ -25,8 +25,16 @@ while [ ${#queue[@]} -gt 0 ]; do
     for dep in $(deps_of "$file"); do
         is_external "$dep" || continue
         name="$(basename "$dep")"
+        # The libraries carry the absolute install names of the prefix they were
+        # built in; after the checkout moves, find them by name instead.
+        src="$dep"
+        [ -f "$src" ] || src="$SPICE_PREFIX/lib/$name"
+        if [ ! -f "$src" ]; then
+            echo "error: cannot find $name (referenced as $dep)" >&2
+            exit 1
+        fi
         if [ ! -f "$FW/$name" ]; then
-            cp -L "$dep" "$FW/$name"
+            cp -L "$src" "$FW/$name"
             chmod u+w "$FW/$name"
             install_name_tool -id "@rpath/$name" "$FW/$name" 2>/dev/null
             queue+=("$FW/$name")

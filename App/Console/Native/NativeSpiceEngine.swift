@@ -73,6 +73,8 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
     }
 
     fileprivate func log(_ message: String) { continuation.yield(.log(message)) }
+    /// A line for the console's log pane from outside the engine.
+    func note(_ message: String) { log(message) }
 
     // MARK: - ConsoleEngine
 

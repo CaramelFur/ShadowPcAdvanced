@@ -26,6 +26,9 @@ final class CocoaSpiceEngine: NSObject, ConsoleEngine {
     private var spamTask: Task<Void, Never>?
 
     static var isAvailable: Bool { MTLCreateSystemDefaultDevice() != nil }
+    /// False when Metal or the shader library could not be set up; the console
+    /// then uses the classic engine for this window.
+    var hasRenderer: Bool { renderer != nil }
 
     override init() {
         let stream = AsyncStream<ConsoleEvent>.makeStream()

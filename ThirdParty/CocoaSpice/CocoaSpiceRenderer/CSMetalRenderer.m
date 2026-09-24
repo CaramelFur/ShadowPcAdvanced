@@ -117,7 +117,7 @@ NS_ASSUME_NONNULL_END
 @synthesize viewportScale = _viewportScale;
 
 /// Initialize with the MetalKit view from which we'll obtain our Metal device
-- (nonnull instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView
+- (nullable instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView
 {
     self = [super init];
     if(self)
@@ -137,13 +137,21 @@ NS_ASSUME_NONNULL_END
         // ShadowPcAdvanced: CSShaders.metal is compiled into the app's default.metallib.
         NSBundle *bundle = NSBundle.mainBundle;
         id<MTLLibrary> defaultLibrary = [_device newDefaultLibraryWithBundle:bundle error:&error];
-        NSAssert(defaultLibrary, @"Failed to get library from bundle: %@", error);
 
         // Load the vertex function from the library
         id<MTLFunction> vertexFunction = [defaultLibrary newFunctionWithName:@"vertexShader"];
 
         // Load the fragment function from the library
         id<MTLFunction> fragmentFunction = [defaultLibrary newFunctionWithName:@"samplingShader"];
+
+        // ShadowPcAdvanced: NSAssert is compiled out of Release builds and Metal
+        // aborts the process on a nil vertex function, so fail the init instead
+        // and let the caller fall back to another renderer.
+        if (!defaultLibrary || !vertexFunction || !fragmentFunction) {
+            [CSMetalRenderer _failWith:[NSString stringWithFormat:@"Metal shader library unavailable on %@: %@",
+                                        _device.name ?: @"no device", error.localizedDescription ?: @"vertexShader/samplingShader missing"]];
+            return nil;
+        }
 
         // Set up a descriptor for creating a pipeline state object
         MTLRenderPipelineDescriptor *pipelineStateDescriptor = [[MTLRenderPipelineDescriptor alloc] init];
@@ -163,7 +171,11 @@ NS_ASSUME_NONNULL_END
 
         _pipelineState = [_device newRenderPipelineStateWithDescriptor:pipelineStateDescriptor
                                                                  error:&error];
-        NSAssert(_pipelineState, @"Failed to create pipeline state to render to texture: %@", error);
+        if (!_pipelineState) {
+            [CSMetalRenderer _failWith:[NSString stringWithFormat:@"Metal pipeline state failed on %@: %@",
+                                        _device.name, error.localizedDescription ?: @"unknown"]];
+            return nil;
+        }
 
         // Create the command queue
         _commandQueue = [_device newCommandQueue];
@@ -173,6 +185,17 @@ NS_ASSUME_NONNULL_END
     }
 
     return self;
+}
+
+static NSString *_lastInitializationError;
+
++ (NSString *)lastInitializationError {
+    return _lastInitializationError;
+}
+
++ (void)_failWith:(NSString *)reason {
+    _lastInitializationError = reason;
+    NSLog(@"[CocoaSpice] %@", reason);
 }
 
 - (void)_initializeUpscaler:(MTLSamplerMinMagFilter)upscaler downscaler:(MTLSamplerMinMagFilter)downscaler {

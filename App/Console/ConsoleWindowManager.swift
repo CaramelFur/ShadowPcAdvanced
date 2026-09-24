@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ShadowAPI
 import SwiftUI
 
@@ -49,6 +50,9 @@ final class ConsoleWindowManager {
 final class ConsoleWindowController: NSWindowController, NSWindowDelegate {
     let viewModel: ConsoleViewModel
     private let onClose: () -> Void
+    private var logWindow: NSWindow?
+    private var logWatch: AnyCancellable?
+    private var logCloseObserver: NSObjectProtocol?
 
     init(viewModel: ConsoleViewModel, onClose: @escaping () -> Void) {
         self.viewModel = viewModel
@@ -67,6 +71,34 @@ final class ConsoleWindowController: NSWindowController, NSWindowDelegate {
         if window.frame.origin == .zero { window.center() }
         super.init(window: window)
         window.delegate = self
+        // The log is a separate window, shown and hidden by the toolbar's Log toggle.
+        logWatch = viewModel.$logVisible.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] visible in
+            self?.setLogWindowVisible(visible)
+        }
+    }
+
+    private func setLogWindowVisible(_ visible: Bool) {
+        guard visible else { return logWindow?.orderOut(nil) ?? () }
+        if logWindow == nil {
+            let log = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 620, height: 380),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered, defer: false
+            )
+            log.title = "\(viewModel.vm.name) — Console log"
+            log.isReleasedWhenClosed = false
+            log.contentView = NSHostingView(rootView: ConsoleLogView(viewModel: viewModel))
+            log.setFrameAutosaveName("console-log-\(viewModel.vm.id)")
+            if log.frame.origin == .zero, let main = window {
+                log.setFrameTopLeftPoint(NSPoint(x: main.frame.maxX + 8, y: main.frame.maxY))
+            }
+            logCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: log, queue: .main) { [weak self] _ in
+                self?.viewModel.logVisible = false
+            }
+            logWindow = log
+        }
+        // orderFront, not makeKey: reading the log must not take the keyboard from the guest.
+        logWindow?.orderFront(nil)
     }
 
     @available(*, unavailable)
@@ -77,6 +109,9 @@ final class ConsoleWindowController: NSWindowController, NSWindowDelegate {
     func windowDidExitFullScreen(_ notification: Notification) { viewModel.isFullScreen = false; viewModel.engine.focus() }
 
     func windowWillClose(_ notification: Notification) {
+        if let logCloseObserver { NotificationCenter.default.removeObserver(logCloseObserver) }
+        logWindow?.close()
+        logWindow = nil
         onClose()
         Task { await viewModel.close() }
     }

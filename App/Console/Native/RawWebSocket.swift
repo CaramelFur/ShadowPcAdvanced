@@ -83,10 +83,13 @@ final class RawWebSocket: @unchecked Sendable {
         var path = url.path.isEmpty ? "/" : url.path
         if let query = url.query { path += "?\(query)" }
         let hostHeader = url.port.map { "\(url.host ?? ""):\($0)" } ?? (url.host ?? "")
+        // Origin: browsers and URLSessionWebSocketTask always send one, and
+        // some servers answer 400 without it.
+        let origin = "\(url.scheme == "wss" ? "https" : "http")://\(hostHeader)"
         let request = [
             "GET \(path) HTTP/1.1", "Host: \(hostHeader)", "Upgrade: websocket", "Connection: Upgrade",
             "Sec-WebSocket-Key: \(key)", "Sec-WebSocket-Version: 13", "Sec-WebSocket-Protocol: \(subprotocol)",
-            "User-Agent: \(userAgent)", "", "",
+            "Origin: \(origin)", "Pragma: no-cache", "Cache-Control: no-cache", "User-Agent: \(userAgent)", "", "",
         ].joined(separator: "\r\n")
         connection.send(content: Data(request.utf8), completion: .contentProcessed { [weak self] error in
             if let error { self?.finish("handshake send failed: \(error.localizedDescription)") }
@@ -100,10 +103,17 @@ final class RawWebSocket: @unchecked Sendable {
             return false
         }
         let head = String(decoding: buffer[buffer.startIndex..<end.lowerBound], as: UTF8.self)
-        buffer = Data(buffer[end.upperBound...])
+        let rest = Data(buffer[end.upperBound...])
+        buffer = rest
         let lines = head.components(separatedBy: "\r\n")
         guard let status = lines.first, status.split(separator: " ").dropFirst().first == "101" else {
-            finish("websocket upgrade refused: \(lines.first ?? "no status line")")
+            // Say what the server said: the reason for a refusal is in its body.
+            var reason = "websocket upgrade refused: \(lines.first ?? "no status line")"
+            let body = String(decoding: rest.prefix(300), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !body.isEmpty { reason += " — \(body)" }
+            let interesting = lines.dropFirst().filter { $0.lowercased().hasPrefix("www-authenticate") || $0.lowercased().hasPrefix("x-") }
+            if !interesting.isEmpty { reason += " [\(interesting.joined(separator: "; "))]" }
+            finish(reason)
             return false
         }
         let expected = Data(Insecure.SHA1.hash(data: Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8))).base64EncodedString()

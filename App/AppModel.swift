@@ -104,7 +104,14 @@ final class AppModel: ObservableObject {
             for vm in vms {
                 var row = rows.first { $0.id == vm.id } ?? VMRow(vm: vm)
                 row.vm = vm
-                row.address = try await client.launcher.address(vm.id)
+                // A VM the inventory reports as off has no address, and asking
+                // only earns a 472 "vm not on a slot" every refresh. Ask while it
+                // is up, is being started, or still had an address last time (so
+                // a shutdown is seen once).
+                let before = rows.first { $0.id == vm.id }
+                var mayHaveAddress = before?.address != nil || before?.activity != nil
+                if case .stopped = VMState(status: vm.status) {} else { mayHaveAddress = true }
+                row.address = mayHaveAddress ? try await client.launcher.address(vm.id) : nil
                 // The live row, not the copy from before the await: startVM or a
                 // console may have learned the new address meanwhile.
                 let live = rows.first { $0.id == vm.id }

@@ -27,7 +27,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Create a new renderer for a MTKView
 /// @param mtkView The MetalKit View
-- (nonnull instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView;
+/// ShadowPcAdvanced: nil when the shader library or pipeline cannot be created
+/// (see `lastInitializationError`) instead of aborting.
+- (nullable instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView;
+
+/// Why the last `initWithMetalKitView:` returned nil, if it did.
+@property (class, nonatomic, readonly, nullable) NSString *lastInitializationError;
 
 /// Modify upscaler and downscaler settings
 /// @param upscaler Upscaler to use

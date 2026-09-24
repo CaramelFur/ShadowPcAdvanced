@@ -14,6 +14,25 @@ public struct APILogEntry: Identifiable, Sendable {
     public let error: String?
     public let duration: TimeInterval
 
+    /// The whole exchange as text, the way the API Log window shows it.
+    public var transcript: String {
+        var out = "\(Self.stamp.string(from: date))  \(method) \(url)\n"
+        out += requestHeaders.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }.joined(separator: "\n")
+        if let b = requestBody { out += "\n\n\(b)" }
+        out += "\n\n← \(status.map(String.init) ?? "error")  (\(Int(duration * 1000)) ms)\n"
+        if let error { out += error + "\n" }
+        out += responseHeaders.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }.joined(separator: "\n")
+        if let b = responseBody { out += "\n\n\(b)" }
+        return out
+    }
+
+    private static let stamp: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return f
+    }()
+
     /// Reproduces the request with secrets still redacted.
     public var curl: String {
         var parts = ["curl -X \(method) '\(url)'"]

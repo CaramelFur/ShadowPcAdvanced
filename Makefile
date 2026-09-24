@@ -4,8 +4,9 @@ CONFIG   ?= Release
 XCODEGEN := ThirdParty/tools/bin/xcodegen
 DERIVED  := build/DerivedData
 APP      := $(DERIVED)/Build/Products/$(CONFIG)/ShadowPcAdvanced.app
-# Where every successful build is put for the user: next to the repo.
-DIST     ?= ../ShadowPcAdvanced.app
+# Where every successful build is installed: /Applications, and `make run`
+# launches that copy.
+DIST     ?= /Applications/ShadowPcAdvanced.app
 
 .PHONY: xcodegen deps project build run test clean
 
@@ -30,8 +31,8 @@ build: project   ## command-line build; a good build is also copied to $(DIST)
 		grep -n "error:" build/xcodebuild.log | sort -u | head -40; echo "BUILD FAILED (full log: build/xcodebuild.log)"; exit 1; \
 	fi
 
-run: build
-	open $(APP)
+run: build       ## build, install to $(DIST) and launch it from there
+	@pkill -x ShadowPcAdvanced 2>/dev/null; sleep 1; open "$(DIST)"
 
 test:            ## ShadowAPI unit tests
 	swift test --package-path Packages/ShadowAPI

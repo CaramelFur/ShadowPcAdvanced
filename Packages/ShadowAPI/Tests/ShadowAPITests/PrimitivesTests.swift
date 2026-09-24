@@ -114,3 +114,21 @@ final class PrimitivesTests: XCTestCase {
         XCTAssertTrue(url.contains("x=1"))
     }
 }
+
+final class APILogTranscriptTests: XCTestCase {
+    func testTranscriptCarriesTheWholeExchange() {
+        let e = APILogEntry(
+            id: UUID(), date: Date(timeIntervalSince1970: 0), method: "GET", url: "https://api.example/shadow/vm/ip",
+            requestHeaders: Redactor.headers(["Authorization": "Bearer ory_supersecrettoken_abcdefgh", "X-Vm-Id": "v-1"]),
+            requestBody: nil, status: 472, responseHeaders: ["content-type": "application/json"],
+            responseBody: "{\n  \"err\" : \"vm not on a slot\"\n}", error: nil, duration: 0.499
+        )
+        let t = e.transcript
+        XCTAssertTrue(t.contains("GET https://api.example/shadow/vm/ip"))
+        XCTAssertTrue(t.contains("← 472  (499 ms)"))
+        XCTAssertTrue(t.contains("vm not on a slot"))
+        XCTAssertTrue(t.contains("Authorization: Bearer ory_…("), t)
+        XCTAssertFalse(t.contains("supersecret"))
+        XCTAssertTrue(t.hasPrefix("1970-01-01 "))
+    }
+}

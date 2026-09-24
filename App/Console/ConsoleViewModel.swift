@@ -37,7 +37,8 @@ final class ConsoleViewModel: ObservableObject {
     /// Real VM status from the proxy — never the SPICE link state.
     @Published private(set) var statusLabel = "…"
     @Published private(set) var statusColor: Color = .orange
-    @Published var logVisible = true
+    /// The log lives in its own window (ConsoleWindowController shows it).
+    @Published var logVisible = false
     @Published private(set) var logLines: [String] = []
     @Published var isFullScreen = false { didSet { Task { await engine.setBare(isFullScreen) } } }
     @Published var notice: String?
@@ -157,6 +158,8 @@ final class ConsoleViewModel: ObservableObject {
     }
 
     func startVM() { Task { await model.startVM(vm.id) } }
+
+    func clearLog() { logLines.removeAll() }
 
     private func handle(_ event: ConsoleEvent) {
         switch event {
