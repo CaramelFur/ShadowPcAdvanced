@@ -1,4 +1,4 @@
-// FunkyShadow console page. Drives the unmodified vendored spice-html5 and
+// ShadowPcAdvanced console page. Drives the unmodified vendored spice-html5 and
 // talks to the native side through two message handlers:
 //   funkyTicket (with reply)  -> { uri, password } | { stop:true }
 //   funkyEvent  (one-way)     -> { type:"log"|"link"|"inputsReady"|"pageReady", ... }

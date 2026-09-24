@@ -7,7 +7,7 @@ enum WebAssets {
         let fm = FileManager.default
         var candidates: [URL] = []
         // Live-edit override.
-        if let dir = ProcessInfo.processInfo.environment["FUNKYSHADOW_WEB_DIR"], !dir.isEmpty {
+        if let dir = ProcessInfo.processInfo.environment["SHADOWPCADVANCED_WEB_DIR"], !dir.isEmpty {
             candidates.append(URL(fileURLWithPath: dir, isDirectory: true))
         }
         if let resources = Bundle.main.resourceURL { candidates.append(resources.appendingPathComponent("web", isDirectory: true)) }

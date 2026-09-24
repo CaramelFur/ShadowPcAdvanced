@@ -5,17 +5,17 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>FunkyShadow</string>
+    <string>ShadowPcAdvanced</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.caramelfur.funkyshadow</string>
+    <string>dev.caramelfur.shadowpcadvanced</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>FunkyShadow</string>
+    <string>ShadowPcAdvanced</string>
     <key>CFBundleDisplayName</key>
-    <string>FunkyShadow</string>
+    <string>ShadowPcAdvanced</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -36,7 +36,7 @@
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>dev.caramelfur.funkyshadow.oauth</string>
+            <string>dev.caramelfur.shadowpcadvanced.oauth</string>
             <key>CFBundleTypeRole</key>
             <string>Viewer</string>
             <key>CFBundleURLSchemes</key>

@@ -19,7 +19,7 @@ struct SettingsView: View {
             }
             Section {
                 Toggle("Claim tech.shadow:// while signing in", isOn: $claimEnabled)
-                Text("FunkyShadow borrows the URL scheme only during sign-in and gives it back afterwards. When off, paste the redirect URL into the sign-in dialog instead.")
+                Text("ShadowPcAdvanced borrows the URL scheme only during sign-in and gives it back afterwards. When off, paste the redirect URL into the sign-in dialog instead.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

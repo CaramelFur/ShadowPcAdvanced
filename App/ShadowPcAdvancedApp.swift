@@ -2,14 +2,14 @@ import AppKit
 import SwiftUI
 
 @main
-struct FunkyShadowApp: App {
+struct ShadowPcAdvancedApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel.shared
 
     var body: some Scene {
         // `Window`, not `WindowGroup`: an incoming tech.shadow:// URL must never
         // spawn a second main window.
-        Window("FunkyShadow", id: "main") {
+        Window("ShadowPcAdvanced", id: "main") {
             RootView()
                 .environmentObject(model)
                 .environmentObject(model.login)
@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
         }
-        // `FunkyShadow --selftest-native`: exercise the spice-glib thread, the
+        // `ShadowPcAdvanced --selftest-native`: exercise the spice-glib thread, the
         // open-fd path and the splice against a dead endpoint, then exit.
         if CommandLine.arguments.contains("--selftest-native") {
             Task { @MainActor in
@@ -62,13 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         AppModel.shared.start()
-        // `FunkyShadow --bench-splice ws://127.0.0.1:8765/`: splice throughput (diagnostics).
+        // `ShadowPcAdvanced --bench-splice ws://127.0.0.1:8765/`: splice throughput (diagnostics).
         if let i = CommandLine.arguments.firstIndex(of: "--bench-splice"), i + 1 < CommandLine.arguments.count,
            let url = URL(string: CommandLine.arguments[i + 1]) {
             DispatchQueue.global().async { SpiceSplice.benchmark(url: url) }
             return
         }
-        // `FunkyShadow --dump-windows`: print window/modal state after launch (diagnostics).
+        // `ShadowPcAdvanced --dump-windows`: print window/modal state after launch (diagnostics).
         if CommandLine.arguments.contains("--dump-windows") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { AppDelegate.dumpWindows() }
         }

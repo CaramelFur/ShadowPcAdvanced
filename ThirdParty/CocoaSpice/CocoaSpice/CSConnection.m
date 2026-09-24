@@ -78,7 +78,7 @@ static void cs_main_channel_event(SpiceChannel *channel, SpiceChannelEvent event
                 case SPICE_CHANNEL_ERROR_IO: code = kCSConnectionErrorIO; break;
                 case SPICE_CHANNEL_ERROR_TLS:
                 case SPICE_CHANNEL_ERROR_AUTH: code = kCSConnectionErrorAuthentication; break;
-                // FunkyShadow: a link that dies in the handshake (transport refused
+                // ShadowPcAdvanced: a link that dies in the handshake (transport refused
                 // or dropped) is not a wrong ticket.
                 case SPICE_CHANNEL_ERROR_LINK: code = kCSConnectionErrorConnect; break;
                 case SPICE_CHANNEL_ERROR_CONNECT: code = kCSConnectionErrorConnect; break;
@@ -132,7 +132,7 @@ static void cs_display_monitors(SpiceChannel *channel, GParamSpec *pspec,
     g_clear_pointer(&cfgs, g_array_unref);
 }
 
-// FunkyShadow: a primary surface is enough to announce a display; don't depend
+// ShadowPcAdvanced: a primary surface is enough to announce a display; don't depend
 // on the server ever sending a monitors config (see cs_update_monitor_area).
 static void cs_display_primary_created(SpiceChannel *channel, gint format,
                                        gint width, gint height, gint stride,
@@ -196,7 +196,7 @@ static void cs_port_opened(SpiceChannel *channel, GParamSpec *pspec,
     }
 }
 
-// FunkyShadow: the transport is supplied per channel by `fileDescriptorProvider`
+// ShadowPcAdvanced: the transport is supplied per channel by `fileDescriptorProvider`
 // (a socketpair end bridged to a WebSocket) instead of being dialled by SPICE.
 static void cs_channel_open_fd(SpiceChannel *channel, gint with_tls, gpointer data)
 {

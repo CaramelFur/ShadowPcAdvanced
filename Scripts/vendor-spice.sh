@@ -3,7 +3,7 @@
 #   Scripts/vendor-spice.sh                 # pinned commit, fetched from upstream
 #   Scripts/vendor-spice.sh <sha>           # another commit
 #   Scripts/vendor-spice.sh --from <dir>    # copy an existing checkout (offline)
-# All FunkyShadow customisation lives in console.js / WKUserScripts, never here.
+# All ShadowPcAdvanced customisation lives in console.js / WKUserScripts, never here.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

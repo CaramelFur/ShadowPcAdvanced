@@ -23,7 +23,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// FunkyShadow: returns a connected socket for the given SPICE channel, or -1.
+/// ShadowPcAdvanced: returns a connected socket for the given SPICE channel, or -1.
 /// Called on the SPICE thread; the connection owns the descriptor afterwards.
 typedef int (^CSConnectionFileDescriptorProvider)(NSInteger channelType, NSInteger channelID);
 
@@ -82,7 +82,7 @@ typedef int (^CSConnectionFileDescriptorProvider)(NSInteger channelType, NSInteg
 /// @param socketFile Socket file
 - (instancetype)initWithUnixSocketFile:(NSURL *)socketFile NS_DESIGNATED_INITIALIZER;
 
-/// FunkyShadow: create a connection whose channels are each carried by a file
+/// ShadowPcAdvanced: create a connection whose channels are each carried by a file
 /// descriptor from `provider` (SPICE over something that is not a plain socket).
 /// Audio, USB redirection and smartcard channels are disabled.
 - (instancetype)initWithFileDescriptorProvider:(CSConnectionFileDescriptorProvider)provider NS_DESIGNATED_INITIALIZER;

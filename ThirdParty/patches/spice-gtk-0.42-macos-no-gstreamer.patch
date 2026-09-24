@@ -9,7 +9,7 @@ diff --color -ruN a/spice-gtk-0.42/meson.build b/spice-gtk-0.42/meson.build
 -foreach dep : deps
 -  spice_glib_deps += dependency(dep, version: gstreamer_version_info)
 -endforeach
-+# FunkyShadow: GStreamer is patched out (no audio, no VP8/H264 streams);
++# ShadowPcAdvanced: GStreamer is patched out (no audio, no VP8/H264 streams);
 +# see src/spice-nogst.c. The built-in MJPEG decoder still handles streams.
  
  # builtin-mjpeg
@@ -22,7 +22,7 @@ diff --color -ruN a/spice-gtk-0.42/src/channel-display-priv.h b/spice-gtk-0.42/s
  #include "common/rop3.h"
  
 -#include <gst/gst.h>
-+typedef struct _GstPipeline GstPipeline; /* FunkyShadow: no GStreamer */
++typedef struct _GstPipeline GstPipeline; /* ShadowPcAdvanced: no GStreamer */
  
  G_BEGIN_DECLS
  
@@ -64,7 +64,7 @@ diff --color -ruN a/spice-gtk-0.42/src/meson.build b/spice-gtk-0.42/src/meson.bu
    spice_client_glib_syms = files('spice-glib-sym-file')
    spice_client_glib_syms_path = meson.current_source_dir() / 'spice-glib-sym-file'
 -  spice_gtk_version_script = ['-export-symbols', spice_client_glib_syms_path]
-+  # FunkyShadow: '-export-symbols' is a libtool flag that Apple's ld rejects.
++  # ShadowPcAdvanced: '-export-symbols' is a libtool flag that Apple's ld rejects.
 +  # Export everything; the public API already has default visibility.
 +  spice_gtk_version_script = []
  endif
@@ -86,7 +86,7 @@ diff --color -ruN a/spice-gtk-0.42/src/spice-audio.c b/spice-gtk-0.42/src/spice-
          name = g_get_application_name();
  
 -    self = SPICE_AUDIO(spice_gstaudio_new(session, context, name));
-+    /* FunkyShadow: no GStreamer, so no audio backend. */
++    /* ShadowPcAdvanced: no GStreamer, so no audio backend. */
 +    self = NULL;
      if (self != NULL) {
          spice_g_signal_connect_object(session, "notify::enable-audio", G_CALLBACK(session_enable_audio), self, 0);
@@ -95,7 +95,7 @@ diff --color -ruN a/spice-gtk-0.42/src/spice-nogst.c b/spice-gtk-0.42/src/spice-
 --- a/spice-gtk-0.42/src/spice-nogst.c	1970-01-01 01:00:00
 +++ b/spice-gtk-0.42/src/spice-nogst.c	2026-09-19 01:58:50
 @@ -0,0 +1,21 @@
-+/* FunkyShadow: stand-in for channel-display-gst.c and spice-gstaudio.c so
++/* ShadowPcAdvanced: stand-in for channel-display-gst.c and spice-gstaudio.c so
 + * spice-client-glib builds without GStreamer. Video streams fall back to the
 + * built-in MJPEG decoder; other codecs are never advertised to the server. */
 +#include "config.h"

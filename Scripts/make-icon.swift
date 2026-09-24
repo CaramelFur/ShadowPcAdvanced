@@ -1,6 +1,6 @@
 #!/usr/bin/env swift
 //
-// make-icon.swift — draws FunkyShadow's app icon and builds the .icns.
+// make-icon.swift — draws ShadowPcAdvanced's app icon and builds the .icns.
 //
 //   swift Scripts/make-icon.swift [--preview <dir>]
 //
@@ -432,7 +432,7 @@ writePNG(rendered[1024]!, to: masterURL)
 print("wrote \(masterURL.path)")
 
 // The iconset is scratch: keep it out of the repo (anything under App/ gets bundled).
-let workDir: URL = fm.temporaryDirectory.appendingPathComponent("funkyshadow-icon-\(UUID().uuidString)")
+let workDir: URL = fm.temporaryDirectory.appendingPathComponent("shadowpcadvanced-icon-\(UUID().uuidString)")
 let iconsetURL: URL = workDir.appendingPathComponent("AppIcon.iconset")
 try fm.createDirectory(at: iconsetURL, withIntermediateDirectories: true)
 

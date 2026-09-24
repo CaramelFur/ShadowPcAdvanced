@@ -52,12 +52,12 @@ final class AppModel: ObservableObject {
     /// Keychain ACL would prompt on every build anyway).
     static func makeTokenStore() -> TokenStore {
         let env = ProcessInfo.processInfo.environment
-        if let path = env["FUNKYSHADOW_TOKEN_FILE"], !path.isEmpty {
+        if let path = env["SHADOWPCADVANCED_TOKEN_FILE"], !path.isEmpty {
             return FileTokenStore(url: URL(fileURLWithPath: path))
         }
         if Bundle.main.bundleURL.pathExtension == "app" { return KeychainTokenStore() }
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return FileTokenStore(url: dir.appendingPathComponent("FunkyShadow/oauth_tokens.json"))
+        return FileTokenStore(url: dir.appendingPathComponent("ShadowPcAdvanced/oauth_tokens.json"))
     }
 
     func start() {

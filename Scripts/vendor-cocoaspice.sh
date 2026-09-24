@@ -1,6 +1,6 @@
 #!/bin/bash
 # Vendor UTM's CocoaSpice (Apache-2.0) into ThirdParty/CocoaSpice and apply
-# ThirdParty/patches/cocoaspice-funkyshadow.patch.
+# ThirdParty/patches/cocoaspice-shadowpcadvanced.patch.
 #   Scripts/vendor-cocoaspice.sh            # pinned commit, fetched from upstream
 #   Scripts/vendor-cocoaspice.sh <sha>      # another commit (the patch may need a refresh)
 # Left out: USB (libusb), gst_ios_init (GStreamer) and ExternalHeaders (iOS
@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 REPO="https://github.com/utmapp/CocoaSpice.git"
 PIN="127033fa3e59cd49678f49ed54f8adfc060afb56"
 DEST="ThirdParty/CocoaSpice"
-PATCH="ThirdParty/patches/cocoaspice-funkyshadow.patch"
+PATCH="ThirdParty/patches/cocoaspice-shadowpcadvanced.patch"
 
 SHA="${1:-$PIN}"
 SRC="$(mktemp -d)"

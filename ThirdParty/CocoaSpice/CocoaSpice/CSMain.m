@@ -93,7 +93,7 @@ void *spice_main_loop(void *args) {
     pthread_setname_np("SPICE Main Loop");
     
     g_main_context_ref(self->_main_context);
-    // FunkyShadow: own the (default) context for the life of the thread, not
+    // ShadowPcAdvanced: own the (default) context for the life of the thread, not
     // just per iteration. Otherwise g_main_context_invoke() from a thread
     // whose thread-default context is this one - every thread, for the default
     // context - may run SPICE code inline on the wrong thread, and the ucontext
@@ -141,7 +141,7 @@ void *spice_main_loop(void *args) {
 - (id)init {
     self = [super init];
     if (self) {
-        // FunkyShadow: stock spice-gtk (no spice_util_set_main_context patch)
+        // ShadowPcAdvanced: stock spice-gtk (no spice_util_set_main_context patch)
         // schedules everything on the default context, so that is the one
         // this thread iterates.
         _main_context = g_main_context_ref(g_main_context_default());

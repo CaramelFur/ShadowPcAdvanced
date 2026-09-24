@@ -43,7 +43,7 @@ public struct KeychainTokenStore: TokenStore {
     public let service: String
     public let account: String
 
-    public init(service: String = "dev.caramelfur.funkyshadow.oauth", account: String = "default") {
+    public init(service: String = "dev.caramelfur.shadowpcadvanced.oauth", account: String = "default") {
         self.service = service
         self.account = account
     }
@@ -67,7 +67,7 @@ public struct KeychainTokenStore: TokenStore {
         if status == errSecItemNotFound {
             var add = baseQuery
             add[kSecValueData as String] = data
-            add[kSecAttrLabel as String] = "FunkyShadow session"
+            add[kSecAttrLabel as String] = "ShadowPcAdvanced session"
             status = SecItemAdd(add as CFDictionary, nil)
         }
         guard status == errSecSuccess else {

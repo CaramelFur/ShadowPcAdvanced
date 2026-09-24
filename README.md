@@ -1,4 +1,4 @@
-# FunkyShadow
+# ShadowPcAdvanced
 
 Native macOS client for Shadow PC: sign in, list VMs, start/stop, and a SPICE
 KVM console (BIOS/boot access) — a Swift port of `../shadow-cli`.
@@ -8,8 +8,8 @@ KVM console (BIOS/boot access) — a Swift port of `../shadow-cli`.
 ```bash
 make xcodegen  # once: builds XcodeGen 2.38.0 into ThirdParty/tools (~4 min)
 make deps      # once: builds spice-client-glib + deps into ThirdParty/prefix (~15 min)
-make project   # generates FunkyShadow.xcodeproj from project.yml (XcodeGen)
-open FunkyShadow.xcodeproj   # then ⌘R — or: make run
+make project   # generates ShadowPcAdvanced.xcodeproj from project.yml (XcodeGen)
+open ShadowPcAdvanced.xcodeproj   # then ⌘R — or: make run
 make test      # ShadowAPI unit tests
 ```
 
@@ -56,6 +56,6 @@ permission involved. Losing focus always releases everything.
 GStreamer is patched out, so there is no audio and no VP8/H264 streaming; the
 built-in MJPEG decoder still handles video streams.
 
-`FunkyShadow.app/Contents/MacOS/FunkyShadow --selftest-native` smoke-tests the
+`ShadowPcAdvanced.app/Contents/MacOS/ShadowPcAdvanced --selftest-native` smoke-tests the
 GLib thread, open-fd plumbing and splice of both native engines, plus Metal
 device/shader/renderer setup, without needing a VM.

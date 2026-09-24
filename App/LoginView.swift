@@ -6,7 +6,7 @@ struct LoginView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("FunkyShadow").font(.largeTitle.bold())
+            Text("ShadowPcAdvanced").font(.largeTitle.bold())
             Text("Sign in with your Shadow account to manage your cloud PCs.")
                 .foregroundStyle(.secondary)
 

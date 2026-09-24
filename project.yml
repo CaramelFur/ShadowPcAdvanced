@@ -1,5 +1,5 @@
 # XcodeGen spec — regenerate the project with:  make project
-name: FunkyShadow
+name: ShadowPcAdvanced
 options:
   bundleIdPrefix: dev.caramelfur
   deploymentTarget:
@@ -19,7 +19,7 @@ settings:
     SPICE_PREFIX: $(SRCROOT)/ThirdParty/prefix
 
 targets:
-  FunkyShadow:
+  ShadowPcAdvanced:
     type: application
     platform: macOS
     sources:
@@ -48,11 +48,11 @@ targets:
       - sdk: CoreImage.framework
     settings:
       base:
-        PRODUCT_NAME: FunkyShadow
-        PRODUCT_BUNDLE_IDENTIFIER: dev.caramelfur.funkyshadow
+        PRODUCT_NAME: ShadowPcAdvanced
+        PRODUCT_BUNDLE_IDENTIFIER: dev.caramelfur.shadowpcadvanced
         INFOPLIST_FILE: App/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-        SWIFT_OBJC_BRIDGING_HEADER: App/FunkyShadow-Bridging-Header.h
+        SWIFT_OBJC_BRIDGING_HEADER: App/ShadowPcAdvanced-Bridging-Header.h
         # The ported libraries are built for this machine's architecture only.
         ARCHS: $(NATIVE_ARCH_ACTUAL)
         ONLY_ACTIVE_ARCH: YES
@@ -98,10 +98,10 @@ targets:
         script: '"$SRCROOT/Scripts/embed-dylibs.sh"'
 
 schemes:
-  FunkyShadow:
+  ShadowPcAdvanced:
     build:
       targets:
-        FunkyShadow: all
+        ShadowPcAdvanced: all
     run:
       config: Debug
     archive:

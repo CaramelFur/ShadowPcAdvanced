@@ -15,7 +15,7 @@ diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
                  case SPICE_CHANNEL_ERROR_TLS:
 -                case SPICE_CHANNEL_ERROR_LINK:
                  case SPICE_CHANNEL_ERROR_AUTH: code = kCSConnectionErrorAuthentication; break;
-+                // FunkyShadow: a link that dies in the handshake (transport refused
++                // ShadowPcAdvanced: a link that dies in the handshake (transport refused
 +                // or dropped) is not a wrong ticket.
 +                case SPICE_CHANNEL_ERROR_LINK: code = kCSConnectionErrorConnect; break;
                  case SPICE_CHANNEL_ERROR_CONNECT: code = kCSConnectionErrorConnect; break;
@@ -25,7 +25,7 @@ diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
      g_clear_pointer(&cfgs, g_array_unref);
  }
  
-+// FunkyShadow: a primary surface is enough to announce a display; don't depend
++// ShadowPcAdvanced: a primary surface is enough to announce a display; don't depend
 +// on the server ever sending a monitors config (see cs_update_monitor_area).
 +static void cs_display_primary_created(SpiceChannel *channel, gint format,
 +                                       gint width, gint height, gint stride,
@@ -54,7 +54,7 @@ diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
      }
  }
  
-+// FunkyShadow: the transport is supplied per channel by `fileDescriptorProvider`
++// ShadowPcAdvanced: the transport is supplied per channel by `fileDescriptorProvider`
 +// (a socketpair end bridged to a WebSocket) instead of being dialled by SPICE.
 +static void cs_channel_open_fd(SpiceChannel *channel, gint with_tls, gpointer data)
 +{
@@ -165,7 +165,7 @@ diff --color -ruN a/CocoaSpice/CSDisplay.m b/CocoaSpice/CSDisplay.m
  
      g_assert(CSMain.sharedInstance.isCurrentContextMain);
 -    g_assert(format == SPICE_SURFACE_FMT_32_xRGB || format == SPICE_SURFACE_FMT_16_555);
-+    // FunkyShadow: never abort on a server we don't control. ARGB has the same
++    // ShadowPcAdvanced: never abort on a server we don't control. ARGB has the same
 +    // layout as xRGB (alpha is ignored); 16-bit 565 is shown as 555.
 +    if (format == SPICE_SURFACE_FMT_32_ARGB) {
 +        format = SPICE_SURFACE_FMT_32_xRGB;
@@ -188,7 +188,7 @@ diff --color -ruN a/CocoaSpice/CSDisplay.m b/CocoaSpice/CSDisplay.m
 -            g_clear_pointer(&monitors, g_array_unref);
 -            return;
 -        }
-+        // FunkyShadow: upstream waits here for a MonitorsConfig message when the
++        // ShadowPcAdvanced: upstream waits here for a MonitorsConfig message when the
 +        // server advertises the capability. A server that never sends one would
 +        // leave the screen black forever, so show the whole surface meanwhile;
 +        // a config that does arrive simply replaces it.
@@ -221,7 +221,7 @@ diff --color -ruN a/CocoaSpice/CSMain.m b/CocoaSpice/CSMain.m
 -    gst_ios_init();
      
      g_main_context_ref(self->_main_context);
-+    // FunkyShadow: own the (default) context for the life of the thread, not
++    // ShadowPcAdvanced: own the (default) context for the life of the thread, not
 +    // just per iteration. Otherwise g_main_context_invoke() from a thread
 +    // whose thread-default context is this one - every thread, for the default
 +    // context - may run SPICE code inline on the wrong thread, and the ucontext
@@ -248,7 +248,7 @@ diff --color -ruN a/CocoaSpice/CSMain.m b/CocoaSpice/CSMain.m
 -        if ((_main_context = g_main_context_new()) == NULL) {
 -            return nil;
 -        }
-+        // FunkyShadow: stock spice-gtk (no spice_util_set_main_context patch)
++        // ShadowPcAdvanced: stock spice-gtk (no spice_util_set_main_context patch)
 +        // schedules everything on the default context, so that is the one
 +        // this thread iterates.
 +        _main_context = g_main_context_ref(g_main_context_default());
@@ -287,7 +287,7 @@ diff --color -ruN a/CocoaSpice/include/CSConnection.h b/CocoaSpice/include/CSCon
  
  NS_ASSUME_NONNULL_BEGIN
  
-+/// FunkyShadow: returns a connected socket for the given SPICE channel, or -1.
++/// ShadowPcAdvanced: returns a connected socket for the given SPICE channel, or -1.
 +/// Called on the SPICE thread; the connection owns the descriptor afterwards.
 +typedef int (^CSConnectionFileDescriptorProvider)(NSInteger channelType, NSInteger channelID);
 +
@@ -299,7 +299,7 @@ diff --color -ruN a/CocoaSpice/include/CSConnection.h b/CocoaSpice/include/CSCon
  /// @param socketFile Socket file
  - (instancetype)initWithUnixSocketFile:(NSURL *)socketFile NS_DESIGNATED_INITIALIZER;
 +
-+/// FunkyShadow: create a connection whose channels are each carried by a file
++/// ShadowPcAdvanced: create a connection whose channels are each carried by a file
 +/// descriptor from `provider` (SPICE over something that is not a plain socket).
 +/// Audio, USB redirection and smartcard channels are disabled.
 +- (instancetype)initWithFileDescriptorProvider:(CSConnectionFileDescriptorProvider)provider NS_DESIGNATED_INITIALIZER;
@@ -339,7 +339,7 @@ diff --color -ruN a/CocoaSpiceRenderer/CSMetalRenderer.m b/CocoaSpiceRenderer/CS
          // FIXME: on Swift we have `Bundle.module` generated by SPM but it doesn't appear to be the case for Obj-C
 -        NSURL *modulePath = [NSBundle.mainBundle.resourceURL URLByAppendingPathComponent:@"CocoaSpice_CocoaSpiceRenderer.bundle"];
 -        NSBundle *bundle = [NSBundle bundleWithURL:modulePath];
-+        // FunkyShadow: CSShaders.metal is compiled into the app's default.metallib.
++        // ShadowPcAdvanced: CSShaders.metal is compiled into the app's default.metallib.
 +        NSBundle *bundle = NSBundle.mainBundle;
          id<MTLLibrary> defaultLibrary = [_device newDefaultLibraryWithBundle:bundle error:&error];
          NSAssert(defaultLibrary, @"Failed to get library from bundle: %@", error);
@@ -348,7 +348,7 @@ diff --color -ruN a/CocoaSpiceRenderer/CSMetalRenderer.m b/CocoaSpiceRenderer/CS
      viewportSize.x = size.width;
      viewportSize.y = size.height;
      _renderViewportSize = viewportSize;
-+    // FunkyShadow: a resized drawable must be redrawn even when the scale is
++    // ShadowPcAdvanced: a resized drawable must be redrawn even when the scale is
 +    // unchanged (letterboxed), or the previous frame is shown stretched.
 +    self.renderNeedsUpdate = YES;
  }
@@ -358,7 +358,7 @@ diff --color -ruN a/CocoaSpiceRenderer/CSMetalRenderer.m b/CocoaSpiceRenderer/CS
      id<CAMetalDrawable> currentDrawable = view.currentDrawable;
  
      if (renderPassDescriptor == nil || currentDrawable == nil) {
-+        // FunkyShadow: no drawable (minimised, off screen) must not leave the
++        // ShadowPcAdvanced: no drawable (minimised, off screen) must not leave the
 +        // SPICE thread waiting for a draw that never comes.
 +        [self _completeDraw];
          return;
@@ -368,7 +368,7 @@ diff --color -ruN a/CocoaSpiceRenderer/CSMetalRenderer.m b/CocoaSpiceRenderer/CS
      dispatch_async(dispatch_get_main_queue(), ^{
          self.renderSourceData = nil;
          self.renderNeedsUpdate = NO;
-+        // FunkyShadow: the view may never draw again (window closing); anyone
++        // ShadowPcAdvanced: the view may never draw again (window closing); anyone
 +        // waiting on a draw has to be let go now.
 +        [self _completeDraw];
      });
@@ -378,7 +378,7 @@ diff --color -ruN a/CocoaSpiceRenderer/CSMetalRenderer.m b/CocoaSpiceRenderer/CS
      }
  
      [renderEncoder endEncoding];
-+    return YES; // FunkyShadow: upstream falls off the end (an error under Xcode's defaults)
++    return YES; // ShadowPcAdvanced: upstream falls off the end (an error under Xcode's defaults)
  }
  
  - (void)_renderEncoder:(id<MTLRenderCommandEncoder>)renderEncoder

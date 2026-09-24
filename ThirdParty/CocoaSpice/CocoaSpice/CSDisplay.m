@@ -80,7 +80,7 @@ static void cs_primary_create(SpiceChannel *channel, gint format,
     CSDisplay *self = (__bridge CSDisplay *)data;
 
     g_assert(CSMain.sharedInstance.isCurrentContextMain);
-    // FunkyShadow: never abort on a server we don't control. ARGB has the same
+    // ShadowPcAdvanced: never abort on a server we don't control. ARGB has the same
     // layout as xRGB (alpha is ignored); 16-bit 565 is shown as 555.
     if (format == SPICE_SURFACE_FMT_32_ARGB) {
         format = SPICE_SURFACE_FMT_32_xRGB;
@@ -174,7 +174,7 @@ static void cs_update_monitor_area(SpiceChannel *channel, GParamSpec *pspec, gpo
     if (monitors->len == 0) {
         SPICE_DEBUG("[CocoaSpice] update monitor: no monitor %d", (int)self.monitorID);
         self.ready = NO;
-        // FunkyShadow: upstream waits here for a MonitorsConfig message when the
+        // ShadowPcAdvanced: upstream waits here for a MonitorsConfig message when the
         // server advertises the capability. A server that never sends one would
         // leave the screen black forever, so show the whole surface meanwhile;
         // a config that does arrive simply replaces it.

@@ -1,11 +1,11 @@
 # Convenience wrappers. The real build is the Xcode project:
-#   open FunkyShadow.xcodeproj   → ⌘R
+#   open ShadowPcAdvanced.xcodeproj   → ⌘R
 CONFIG   ?= Release
 XCODEGEN := ThirdParty/tools/bin/xcodegen
 DERIVED  := build/DerivedData
-APP      := $(DERIVED)/Build/Products/$(CONFIG)/FunkyShadow.app
+APP      := $(DERIVED)/Build/Products/$(CONFIG)/ShadowPcAdvanced.app
 # Where every successful build is put for the user: next to the repo.
-DIST     ?= ../FunkyShadow.app
+DIST     ?= ../ShadowPcAdvanced.app
 
 .PHONY: xcodegen deps project build run test clean
 
@@ -19,12 +19,12 @@ xcodegen:        ## build the pinned XcodeGen into ThirdParty/tools
 deps:            ## build spice-client-glib + dependencies into ThirdParty/prefix
 	Scripts/build-spice.sh
 
-project:         ## (re)generate FunkyShadow.xcodeproj from project.yml
+project:         ## (re)generate ShadowPcAdvanced.xcodeproj from project.yml
 	$(XCODEGEN) generate --quiet
 
 build: project   ## command-line build; a good build is also copied to $(DIST)
 	@mkdir -p build
-	@if xcodebuild -project FunkyShadow.xcodeproj -scheme FunkyShadow -configuration $(CONFIG) -derivedDataPath $(DERIVED) build > build/xcodebuild.log 2>&1; then \
+	@if xcodebuild -project ShadowPcAdvanced.xcodeproj -scheme ShadowPcAdvanced -configuration $(CONFIG) -derivedDataPath $(DERIVED) build > build/xcodebuild.log 2>&1; then \
 		rm -rf "$(DIST)" && ditto "$(APP)" "$(DIST)" && echo "BUILD SUCCEEDED → $(DIST)"; \
 	else \
 		grep -n "error:" build/xcodebuild.log | sort -u | head -40; echo "BUILD FAILED (full log: build/xcodebuild.log)"; exit 1; \
@@ -37,4 +37,4 @@ test:            ## ShadowAPI unit tests
 	swift test --package-path Packages/ShadowAPI
 
 clean:
-	rm -rf build FunkyShadow.xcodeproj
+	rm -rf build ShadowPcAdvanced.xcodeproj
