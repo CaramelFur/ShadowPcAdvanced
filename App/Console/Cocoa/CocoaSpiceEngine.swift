@@ -34,10 +34,7 @@ final class CocoaSpiceEngine: NSObject, ConsoleEngine {
         let stream = AsyncStream<ConsoleEvent>.makeStream()
         events = stream.stream
         continuation = stream.continuation
-        // A textured quad needs no discrete GPU; don't wake it on dual-GPU Macs.
-        let device = MTLCopyAllDevices().first { $0.isLowPower } ?? MTLCreateSystemDefaultDevice()
-        metalView = SpiceMetalView(frame: NSRect(x: 0, y: 0, width: 1024, height: 700), device: device)
-        renderer = device == nil ? nil : CSMetalRenderer(metalKitView: metalView)
+        (metalView, renderer) = Self.makeViewAndRenderer()
         super.init()
         renderer?.changeUpscaler(.linear, downscaler: .linear)
         metalView.delegate = renderer
@@ -53,6 +50,23 @@ final class CocoaSpiceEngine: NSObject, ConsoleEngine {
         metalView.onCaptureChanged = { [weak self] captured in
             self?.continuation.yield(.notice(captured ? "Keyboard and mouse captured — press ⌃⌥ to release" : nil))
         }
+    }
+
+    /// The GPU that currently drives the display first: on a dual-GPU Mac the
+    /// other one can be powered down, and then its shader library won't load.
+    /// Every other device is tried before giving up (→ classic renderer).
+    private static func makeViewAndRenderer() -> (SpiceMetalView, CSMetalRenderer?) {
+        let frame = NSRect(x: 0, y: 0, width: 1024, height: 700)
+        var devices: [MTLDevice] = []
+        if let active = MTLCreateSystemDefaultDevice() { devices.append(active) }
+        for device in MTLCopyAllDevices() where !devices.contains(where: { $0.registryID == device.registryID }) {
+            devices.append(device)
+        }
+        for device in devices {
+            let view = SpiceMetalView(frame: frame, device: device)
+            if let renderer = CSMetalRenderer(metalKitView: view) { return (view, renderer) }
+        }
+        return (SpiceMetalView(frame: frame, device: nil), nil)
     }
 
     /// spice-glib's warnings, process-wide, into every open console's log pane.

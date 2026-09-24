@@ -1,6 +1,7 @@
 # Convenience wrappers. The real build is the Xcode project:
 #   open ShadowPcAdvanced.xcodeproj   → ⌘R
-CONFIG   ?= Release
+# Debug for now (user request 2026-09-24): symbols and assertions on.
+CONFIG   ?= Debug
 XCODEGEN := ThirdParty/tools/bin/xcodegen
 DERIVED  := build/DerivedData
 APP      := $(DERIVED)/Build/Products/$(CONFIG)/ShadowPcAdvanced.app
