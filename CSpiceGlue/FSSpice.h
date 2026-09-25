@@ -63,6 +63,8 @@ void fs_spice_free(FSSpice *s, void (*on_freed)(void *ctx));
 
 // PC XT set-1 scancode; 0xE0-prefixed keys are passed as (0x100 | code).
 void fs_spice_key(FSSpice *s, uint32_t scancode, bool down);
+// Press and release as one message, so no network delay can separate them.
+void fs_spice_key_tap(FSSpice *s, uint32_t scancode);
 // button_mask: bit0 left, bit1 middle, bit2 right.
 void fs_spice_mouse_position(FSSpice *s, int x, int y, int button_mask);
 void fs_spice_mouse_motion(FSSpice *s, int dx, int dy, int button_mask);

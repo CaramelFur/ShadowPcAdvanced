@@ -222,7 +222,7 @@ void fs_spice_free(FSSpice *s, void (*on_freed)(void *ctx)) {
 // ---- input ------------------------------------------------------------------
 
 typedef struct { FSSpice *s; int kind, a, b, mask; } InputJob;
-enum { IN_KEY_DOWN, IN_KEY_UP, IN_POSITION, IN_MOTION, IN_BUTTON_DOWN, IN_BUTTON_UP };
+enum { IN_KEY_DOWN, IN_KEY_UP, IN_KEY_TAP, IN_POSITION, IN_MOTION, IN_BUTTON_DOWN, IN_BUTTON_UP };
 
 static gboolean do_input(gpointer data) {
     InputJob *job = data;
@@ -231,6 +231,8 @@ static gboolean do_input(gpointer data) {
         switch (job->kind) {
         case IN_KEY_DOWN: spice_inputs_channel_key_press(inputs, (guint)job->a); break;
         case IN_KEY_UP: spice_inputs_channel_key_release(inputs, (guint)job->a); break;
+        // One SPICE_MSGC_INPUTS_KEY_SCANCODE message (two if the server can't).
+        case IN_KEY_TAP: spice_inputs_channel_key_press_and_release(inputs, (guint)job->a); break;
         case IN_POSITION: spice_inputs_channel_position(inputs, job->a, job->b, 0, job->mask); break;
         case IN_MOTION: spice_inputs_channel_motion(inputs, job->a, job->b, job->mask); break;
         case IN_BUTTON_DOWN: spice_inputs_channel_button_press(inputs, job->a, job->mask); break;
@@ -250,6 +252,8 @@ static void queue_input(FSSpice *s, int kind, int a, int b, int mask) {
 void fs_spice_key(FSSpice *s, uint32_t scancode, bool down) {
     queue_input(s, down ? IN_KEY_DOWN : IN_KEY_UP, (int)scancode, 0, 0);
 }
+
+void fs_spice_key_tap(FSSpice *s, uint32_t scancode) { queue_input(s, IN_KEY_TAP, (int)scancode, 0, 0); }
 
 void fs_spice_mouse_position(FSSpice *s, int x, int y, int button_mask) { queue_input(s, IN_POSITION, x, y, button_mask); }
 

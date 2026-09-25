@@ -23,7 +23,18 @@ final class SpiceMetalView: MTKView {
     var bare = false { didSet { needsLayout = true } }
 
     private(set) var isCaptured = false
-    private var pressedKeys = Set<UInt32>()
+    /// Settings → "Log input sent to the VM"; the engine points it at the console log.
+    let trace = InputTrace()
+    /// Every key on its way to the guest (repeat hold-off, one-message taps).
+    private lazy var keys = GuestKeySender(trace: trace) { [weak self] event in
+        guard let input = self?.spiceInput else { return false }
+        switch event {
+        case .press(let code): input.send(.press, code: Int32(code))
+        case .release(let code): input.send(.release, code: Int32(code))
+        case .tap(let code): input.sendKeyPressAndRelease(Int32(code))
+        }
+        return true
+    }
     /// Modifier key codes currently down *in the guest*.
     private var pressedModifiers = Set<Int>()
     private var commandTapPending = false
@@ -258,21 +269,20 @@ final class SpiceMetalView: MTKView {
         }
     }
 
-    private func send(_ scancode: UInt32, down: Bool) {
-        spiceInput?.send(down ? .press : .release, code: Int32(scancode))
-    }
-
     override func keyDown(with event: NSEvent) {
         commandTapPending = false
+        // Not captured, ⌘ is the Mac's: a ⌘-combination no menu took ends up
+        // here, and must not type its bare letter into the guest (whose ⌘ is
+        // up). AppKit never delivers its key-up either, so it would also stick.
+        if !isCaptured, event.modifierFlags.contains(.command) { return }
         guard let code = MacKeyMap.scancode(forKeyCode: layoutKeyCode(event.keyCode)) else { return }
-        // Auto-repeat is passed on as repeated presses, like a PS/2 keyboard does.
-        pressedKeys.insert(code)
-        send(code, down: true)
+        // macOS auto-repeat only reaches the guest after a PC-like hold; see GuestKeySender.
+        keys.keyDown(code, isRepeat: event.isARepeat, at: event.timestamp)
     }
 
     override func keyUp(with event: NSEvent) {
-        guard let code = MacKeyMap.scancode(forKeyCode: layoutKeyCode(event.keyCode)), pressedKeys.remove(code) != nil else { return }
-        send(code, down: false)
+        guard let code = MacKeyMap.scancode(forKeyCode: layoutKeyCode(event.keyCode)) else { return }
+        keys.keyUp(code, at: event.timestamp)
     }
 
     /// Per-key (left/right) modifier bits, from IOLLEvent.h.
@@ -305,21 +315,20 @@ final class SpiceMetalView: MTKView {
 
             if isCommand, !isCaptured {
                 // ⌘ stays with the Mac (⌘Tab, ⌘Q, ⌘W…). Only a clean tap becomes a Windows-key tap.
-                if pressedModifiers.remove(keyCode) != nil { send(code, down: false) }
+                if pressedModifiers.remove(keyCode) != nil { keys.modifier(code, down: false) }
                 guard Int(event.keyCode) == keyCode else { continue }
                 if down {
                     commandTapPending = true
                 } else if commandTapPending {
                     commandTapPending = false
-                    send(code, down: true)
-                    send(code, down: false)
+                    keys.tap(code, note: "⌘ tap → Windows key")
                 }
                 continue
             }
             guard down != pressedModifiers.contains(keyCode) else { continue }
             if !isCommand { commandTapPending = false }
             if down { pressedModifiers.insert(keyCode) } else { pressedModifiers.remove(keyCode) }
-            send(code, down: down)
+            keys.modifier(code, down: down)
         }
     }
 
@@ -341,16 +350,17 @@ final class SpiceMetalView: MTKView {
         var locks = spiceInput.keyLock
         guard force || locks.contains(.caps) != on else { return }
         if on { locks.insert(.caps) } else { locks.remove(.caps) }
+        keys.flush()
         spiceInput.keyLock = locks
+        trace.log("caps lock → \(on ? "on" : "off") (lock sync\(force ? ", Caps Lock pressed" : ""))")
     }
 
     /// Never leave a key stuck down in the guest.
     func releaseAllKeys() {
         commandTapPending = false
-        for code in pressedKeys { send(code, down: false) }
-        pressedKeys.removeAll()
-        for keyCode in pressedModifiers {
-            if let code = MacKeyMap.scancode(forKeyCode: UInt16(keyCode)) { send(code, down: false) }
+        keys.releaseAll()
+        for keyCode in pressedModifiers.sorted() {
+            if let code = MacKeyMap.scancode(forKeyCode: UInt16(keyCode)) { keys.modifier(code, down: false, note: "let go") }
         }
         pressedModifiers.removeAll()
         // …including anything sent from elsewhere (toolbar, paste).
@@ -376,6 +386,7 @@ final class SpiceMetalView: MTKView {
         for button in [CSInputButton.left, .middle, .right, .side, .extra] where buttons.contains(button) {
             buttons.remove(button)
             spiceInput.sendMouseButton(button, mask: buttons, pressed: false)
+            trace.log("mouse ↑ \(Self.name(button)) mask=\(buttons.rawValue) (let go)")
         }
     }
 
@@ -387,6 +398,7 @@ final class SpiceMetalView: MTKView {
                 // NSEvent deltas are top-left oriented (deltaY > 0 = down), as SPICE wants.
                 if event.deltaX != 0 || event.deltaY != 0 {
                     spiceInput.sendMouseMotion(buttons, relativePoint: CGPoint(x: event.deltaX, y: event.deltaY))
+                    trace.pointer("mouse motion \(Int(event.deltaX)),\(Int(event.deltaY)) mask=\(buttons.rawValue)")
                 }
             } else {
                 // Same speed as the Mac pointer would have over the scaled screen.
@@ -406,6 +418,7 @@ final class SpiceMetalView: MTKView {
     private func position(_ p: CGPoint) {
         lastGuestPoint = p
         spiceInput?.sendMousePosition(buttons, absolutePoint: p)
+        trace.pointer("mouse pos \(Int(p.x)),\(Int(p.y)) mask=\(buttons.rawValue)")
         spiceDisplay?.cursor?.move(to: p) // the renderer draws the guest cursor there
     }
 
@@ -421,9 +434,23 @@ final class SpiceMetalView: MTKView {
         }
         // A release without its press (e.g. the capturing click) is not the guest's business.
         if !down, !buttons.contains(button) { return }
+        keys.flush() // a key still waiting for its release goes first
         moved(event)
         if down { buttons.insert(button) } else { buttons.remove(button) }
         spiceInput.sendMouseButton(button, mask: buttons, pressed: down)
+        let at = spiceInput.serverModeCursor ? "(relative)" : lastGuestPoint.map { "\(Int($0.x)),\(Int($0.y))" } ?? "(no position yet)"
+        trace.log("mouse \(down ? "↓" : "↑") \(Self.name(button)) mask=\(buttons.rawValue) @ \(at)")
+    }
+
+    private static func name(_ button: CSInputButton) -> String {
+        switch button {
+        case .left: return "left"
+        case .middle: return "middle"
+        case .right: return "right"
+        case .side: return "side"
+        case .extra: return "extra"
+        default: return "button \(button.rawValue)"
+        }
     }
 
     private func otherButton(_ event: NSEvent) -> CSInputButton? {
@@ -460,8 +487,11 @@ final class SpiceMetalView: MTKView {
         } else {
             clicks = event.scrollingDeltaY > 0 ? 1 : -1
         }
-        for _ in 0..<min(abs(clicks), 5) {
+        let steps = min(abs(clicks), 5)
+        guard steps > 0 else { return }
+        for _ in 0..<steps {
             spiceInput.sendMouseScroll(clicks > 0 ? .up : .down, buttonMask: buttons, dy: 0)
         }
+        trace.log("wheel \(clicks > 0 ? "↑" : "↓") ×\(steps)")
     }
 }

@@ -50,6 +50,7 @@ final class CocoaSpiceEngine: NSObject, ConsoleEngine {
         metalView.onCaptureChanged = { [weak self] captured in
             self?.continuation.yield(.notice(captured ? "Keyboard and mouse captured — press ⌃⌥ to release" : nil))
         }
+        metalView.trace.sink = { [weak self] line in self?.continuation.yield(.log(line)) }
     }
 
     /// The GPU that currently drives the display first: on a dual-GPU Mac the
@@ -225,8 +226,11 @@ final class CocoaSpiceEngine: NSObject, ConsoleEngine {
     var supportsCapture: Bool { true }
     func toggleCapture() { metalView.toggleCapture() }
 
+    /// Toolbar, paste and Esc spam keys (the view's own keys go through its GuestKeySender).
     private func key(_ scancode: UInt32, down: Bool) {
-        input?.send(down ? .press : .release, code: Int32(scancode))
+        guard let input else { return }
+        input.send(down ? .press : .release, code: Int32(scancode))
+        metalView.trace.log("key \(down ? "↓" : "↑") \(InputTrace.key(scancode)) (toolbar)")
     }
 
     private func tap(_ scancode: UInt32, hold: TimeInterval = 0.03) async {

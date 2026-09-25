@@ -25,6 +25,7 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
         super.init()
         bridge.engine = self
         displayView.input = self
+        displayView.trace.sink = { [weak self] line in self?.log(line) }
 
         var callbacks = FSSpiceCallbacks()
         // Released by fs_spice_free's on_freed, once no callback can fire again.
@@ -116,9 +117,9 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
 
     func sendCtrlAltDel() async {
         let combo = [MacKeyMap.leftControl, MacKeyMap.leftAlt, MacKeyMap.delete]
-        combo.forEach { key($0, down: true) }
+        combo.forEach { toolbarKey($0, down: true) }
         try? await Task.sleep(nanoseconds: 30_000_000)
-        combo.reversed().forEach { key($0, down: false) }
+        combo.reversed().forEach { toolbarKey($0, down: false) }
         log("sent Ctrl+Alt+Del")
     }
 
@@ -147,11 +148,11 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
                 continue
             }
             if stroke.shift {
-                key(MacKeyMap.leftShift, down: true)
+                toolbarKey(MacKeyMap.leftShift, down: true)
                 try? await Task.sleep(nanoseconds: 12_000_000)
             }
             await tap(stroke.scancode, hold: 0.012)
-            if stroke.shift { key(MacKeyMap.leftShift, down: false) }
+            if stroke.shift { toolbarKey(MacKeyMap.leftShift, down: false) }
             result.typed += 1
             try? await Task.sleep(nanoseconds: 25_000_000)
         }
@@ -170,9 +171,15 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
     func focus() { displayView.window?.makeFirstResponder(displayView) }
 
     private func tap(_ scancode: UInt32, hold: TimeInterval = 0.03) async {
-        key(scancode, down: true)
+        toolbarKey(scancode, down: true)
         try? await Task.sleep(nanoseconds: UInt64(hold * 1_000_000_000))
-        key(scancode, down: false)
+        toolbarKey(scancode, down: false)
+    }
+
+    /// Toolbar, paste and Esc spam keys (the view's own keys go through its GuestKeySender).
+    private func toolbarKey(_ scancode: UInt32, down: Bool) {
+        key(scancode, down: down)
+        displayView.trace.log("key \(down ? "↓" : "↑") \(InputTrace.key(scancode)) (toolbar)")
     }
 
     /// Headless smoke test: no VM needed. A channel must ask for its transport
@@ -239,6 +246,10 @@ final class NativeSpiceEngine: NSObject, ConsoleEngine, SpiceDisplayInput {
 
     func key(_ scancode: UInt32, down: Bool) {
         if let spice { fs_spice_key(spice, scancode, down) }
+    }
+
+    func keyTap(_ scancode: UInt32) {
+        if let spice { fs_spice_key_tap(spice, scancode) }
     }
 
     func mousePosition(x: Int, y: Int, buttons: Int) {

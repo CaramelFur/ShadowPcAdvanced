@@ -4,6 +4,8 @@ import Carbon.HIToolbox
 @MainActor
 protocol SpiceDisplayInput: AnyObject {
     func key(_ scancode: UInt32, down: Bool)
+    /// Press and release in one message.
+    func keyTap(_ scancode: UInt32)
     func mousePosition(x: Int, y: Int, buttons: Int)
     func mouseMotion(dx: Int, dy: Int, buttons: Int)
     func mouseButton(_ button: Int, down: Bool, buttons: Int)
@@ -40,7 +42,18 @@ final class SpiceDisplayView: NSView {
     /// Fullscreen drops the margin around the display.
     var bare = false { didSet { needsLayout = true } }
 
-    private var pressedKeys = Set<UInt32>()
+    /// Settings → "Log input sent to the VM"; the engine points it at the console log.
+    let trace = InputTrace()
+    /// Every key on its way to the guest (repeat hold-off, one-message taps).
+    private lazy var keys = GuestKeySender(trace: trace) { [weak self] event in
+        guard let input = self?.input else { return false }
+        switch event {
+        case .press(let code): input.key(code, down: true)
+        case .release(let code): input.key(code, down: false)
+        case .tap(let code): input.keyTap(code)
+        }
+        return true
+    }
     /// Modifier key codes currently down *in the guest*.
     private var pressedModifiers = Set<UInt16>()
     private var commandTapPending = false
@@ -184,14 +197,17 @@ final class SpiceDisplayView: NSView {
 
     override func keyDown(with event: NSEvent) {
         commandTapPending = false
+        // A ⌘-combination no menu took ends up here: it must not type its bare
+        // letter into the guest, and AppKit never delivers its key-up (stuck key).
+        if event.modifierFlags.contains(.command) { return }
         guard let code = MacKeyMap.scancode(forKeyCode: event.keyCode) else { return }
-        pressedKeys.insert(code)
-        input?.key(code, down: true)
+        // macOS auto-repeat only reaches the guest after a PC-like hold; see GuestKeySender.
+        keys.keyDown(code, isRepeat: event.isARepeat, at: event.timestamp)
     }
 
     override func keyUp(with event: NSEvent) {
-        guard let code = MacKeyMap.scancode(forKeyCode: event.keyCode), pressedKeys.remove(code) != nil else { return }
-        input?.key(code, down: false)
+        guard let code = MacKeyMap.scancode(forKeyCode: event.keyCode) else { return }
+        keys.keyUp(code, at: event.timestamp)
     }
 
     /// Per-key (left/right) modifier bits, from IOLLEvent.h. Reading the real
@@ -211,8 +227,7 @@ final class SpiceDisplayView: NSView {
         if keyCode == kVK_CapsLock {
             // One event per toggle; the guest wants a full press.
             guard let code = MacKeyMap.scancode(forKeyCode: event.keyCode) else { return }
-            input?.key(code, down: true)
-            input?.key(code, down: false)
+            keys.tap(code, note: "Caps Lock")
             return
         }
         guard let mask = Self.deviceMasks[keyCode], let code = MacKeyMap.scancode(forKeyCode: event.keyCode) else { return }
@@ -224,15 +239,14 @@ final class SpiceDisplayView: NSView {
                 commandTapPending = true
             } else if commandTapPending {
                 commandTapPending = false
-                input?.key(code, down: true)
-                input?.key(code, down: false)
+                keys.tap(code, note: "⌘ tap → Windows key")
             }
             return
         }
         commandTapPending = false
         guard down != pressedModifiers.contains(event.keyCode) else { return }
         if down { pressedModifiers.insert(event.keyCode) } else { pressedModifiers.remove(event.keyCode) }
-        input?.key(code, down: down)
+        keys.modifier(code, down: down)
     }
 
     /// ⌘-shortcuts stay with the Mac (menus, ⌃⌘F to leave fullscreen).
@@ -245,10 +259,9 @@ final class SpiceDisplayView: NSView {
     /// Never leave a key stuck down in the guest.
     func releaseAllKeys() {
         commandTapPending = false
-        for code in pressedKeys { input?.key(code, down: false) }
-        pressedKeys.removeAll()
-        for keyCode in pressedModifiers {
-            if let code = MacKeyMap.scancode(forKeyCode: keyCode) { input?.key(code, down: false) }
+        keys.releaseAll()
+        for keyCode in pressedModifiers.sorted() {
+            if let code = MacKeyMap.scancode(forKeyCode: keyCode) { keys.modifier(code, down: false, note: "let go") }
         }
         pressedModifiers.removeAll()
     }
@@ -291,6 +304,7 @@ final class SpiceDisplayView: NSView {
             for (button, mask) in [(1, 1), (2, 2), (3, 4)] where buttonMask & mask != 0 {
                 buttonMask &= ~mask
                 input?.mouseButton(button, down: false, buttons: buttonMask)
+                trace.log("mouse ↑ \(Self.buttonName(button)) mask=\(buttonMask) (let go)")
             }
         }
         input?.mouseGrabChanged(false)
@@ -311,9 +325,25 @@ final class SpiceDisplayView: NSView {
             guard mouseGrabbed else { return }
             // NSEvent deltas are already top-left oriented (deltaY > 0 = down).
             let dx = Int(event.deltaX.rounded()), dy = Int(event.deltaY.rounded())
-            if dx != 0 || dy != 0 { input?.mouseMotion(dx: dx, dy: dy, buttons: buttonMask) }
+            if dx != 0 || dy != 0 {
+                input?.mouseMotion(dx: dx, dy: dy, buttons: buttonMask)
+                trace.pointer("mouse motion \(dx),\(dy) mask=\(buttonMask)")
+            }
         } else if let p = guestPoint(event) {
+            lastGuestPoint = p
             input?.mousePosition(x: p.x, y: p.y, buttons: buttonMask)
+            trace.pointer("mouse pos \(p.x),\(p.y) mask=\(buttonMask)")
+        }
+    }
+
+    private var lastGuestPoint: (x: Int, y: Int)?
+
+    private static func buttonName(_ button: Int) -> String {
+        switch button {
+        case 1: return "left"
+        case 2: return "middle"
+        case 3: return "right"
+        default: return "button \(button)"
         }
     }
 
@@ -328,9 +358,12 @@ final class SpiceDisplayView: NSView {
         }
         // A release without its press (e.g. the capturing click) is not the guest's business.
         if !down, buttonMask & mask == 0 { return }
+        keys.flush() // a key still waiting for its release goes first
         moved(event)
         if down { buttonMask |= mask } else { buttonMask &= ~mask }
         input?.mouseButton(button, down: down, buttons: buttonMask)
+        let at = serverMouseMode ? "(relative)" : lastGuestPoint.map { "\($0.x),\($0.y)" } ?? "(no position yet)"
+        trace.log("mouse \(down ? "↓" : "↑") \(Self.buttonName(button)) mask=\(buttonMask) @ \(at)")
     }
 
     override func mouseMoved(with event: NSEvent) { moved(event) }
@@ -359,9 +392,12 @@ final class SpiceDisplayView: NSView {
             clicks = event.scrollingDeltaY > 0 ? 1 : -1
         }
         let wheel = clicks > 0 ? 4 : 5 // up : down
-        for _ in 0..<min(abs(clicks), 5) {
+        let steps = min(abs(clicks), 5)
+        guard steps > 0 else { return }
+        for _ in 0..<steps {
             input?.mouseButton(wheel, down: true, buttons: buttonMask)
             input?.mouseButton(wheel, down: false, buttons: buttonMask)
         }
+        trace.log("wheel \(clicks > 0 ? "↑" : "↓") ×\(steps)")
     }
 }

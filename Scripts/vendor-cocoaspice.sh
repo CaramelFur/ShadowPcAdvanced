@@ -41,6 +41,7 @@ commit $SHA
 License: Apache-2.0 (see LICENSE)
 Modified by $PATCH:
 - CSConnection: per-channel file descriptors (SPICE over the WebSocket splice)
+- CSInput: sendKeyPressAndRelease: (one-message keystroke, SPICE_MSGC_INPUTS_KEY_SCANCODE)
 - CSMain: iterates GLib's default context and owns it for the thread's life
   (stock spice-gtk has no spice_util_set_main_context); no GStreamer init
 - renderer: shaders from the app's default.metallib, redraw after a resize

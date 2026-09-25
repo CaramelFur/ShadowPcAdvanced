@@ -114,6 +114,30 @@
     }];
 }
 
+// ShadowPcAdvanced: one message for a whole keystroke (see the header).
+- (void)sendKeyPressAndRelease:(int)scancode {
+    uint32_t i, b, m;
+    
+    g_return_if_fail(scancode != 0);
+    
+    if (!self.channel) {
+        return;
+    }
+    if (self.disableInputs) {
+        return;
+    }
+    
+    i = scancode / 32;
+    b = scancode % 32;
+    m = (1u << b);
+    g_return_if_fail(i < SPICE_N_ELEMENTS(self->_key_state));
+    
+    [CSMain.sharedInstance asyncWith:^{
+        spice_inputs_channel_key_press_and_release(self.channel, scancode);
+        self->_key_state[i] &= ~m;
+    }];
+}
+
 - (void)releaseKeys {
     uint32_t i, b;
     

@@ -106,6 +106,14 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param scancode PC XT (set 1) scancode
 - (void)sendKey:(CSInputKey)type code:(int)scancode;
 
+/// ShadowPcAdvanced: sends a key press and its release as one message
+/// (SPICE_MSGC_INPUTS_KEY_SCANCODE; two messages if the server lacks that
+/// capability), so network delay can never make the guest see a long hold.
+///
+/// The key must not currently be pressed through `sendKey:code:`.
+/// @param scancode PC XT (set 1) scancode, extended keys as for `sendKey:code:`
+- (void)sendKeyPressAndRelease:(int)scancode;
+
 /// Sends a single pause key event
 ///
 /// This key event is special and requires a special handler.

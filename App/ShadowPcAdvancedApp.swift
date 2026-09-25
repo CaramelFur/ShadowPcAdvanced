@@ -61,6 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // `ShadowPcAdvanced --selftest-input ws://127.0.0.1:8766/`: scripted keystrokes into both
+        // native engines, against Scripts/fake-spice-inputs.py (diagnostics).
+        if let i = CommandLine.arguments.firstIndex(of: "--selftest-input"), i + 1 < CommandLine.arguments.count {
+            let url = CommandLine.arguments[i + 1]
+            Task { @MainActor in exit(await InputSelfTest.run(url: url) ? 0 : 1) }
+            return
+        }
         AppModel.shared.start()
         // `ShadowPcAdvanced --bench-splice ws://127.0.0.1:8765/`: splice throughput (diagnostics).
         if let i = CommandLine.arguments.firstIndex(of: "--bench-splice"), i + 1 < CommandLine.arguments.count,

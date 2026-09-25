@@ -1,6 +1,6 @@
 diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
---- a/CocoaSpice/CSConnection.m	2026-09-24 21:32:08
-+++ b/CocoaSpice/CSConnection.m	2026-09-24 21:32:08
+--- a/CocoaSpice/CSConnection.m	2026-09-25 09:51:12
++++ b/CocoaSpice/CSConnection.m	2026-09-25 09:51:12
 @@ -38,6 +38,7 @@
  @property (nonatomic, readwrite) SpiceSession *spiceSession;
  @property (nonatomic, readwrite) SpiceMainChannel *spiceMain;
@@ -158,8 +158,8 @@ diff --color -ruN a/CocoaSpice/CSConnection.m b/CocoaSpice/CSConnection.m
  }
  
 diff --color -ruN a/CocoaSpice/CSDisplay.m b/CocoaSpice/CSDisplay.m
---- a/CocoaSpice/CSDisplay.m	2026-09-24 21:32:08
-+++ b/CocoaSpice/CSDisplay.m	2026-09-24 21:32:08
+--- a/CocoaSpice/CSDisplay.m	2026-09-25 09:51:12
++++ b/CocoaSpice/CSDisplay.m	2026-09-25 09:51:12
 @@ -80,7 +80,16 @@
      CSDisplay *self = (__bridge CSDisplay *)data;
  
@@ -195,9 +195,43 @@ diff --color -ruN a/CocoaSpice/CSDisplay.m b/CocoaSpice/CSDisplay.m
          goto whole;
      }
      c = &g_array_index(monitors, SpiceDisplayMonitorConfig, 0);
+diff --color -ruN a/CocoaSpice/CSInput.m b/CocoaSpice/CSInput.m
+--- a/CocoaSpice/CSInput.m	2026-09-25 09:51:12
++++ b/CocoaSpice/CSInput.m	2026-09-25 09:51:12
+@@ -114,6 +114,30 @@
+     }];
+ }
+ 
++// ShadowPcAdvanced: one message for a whole keystroke (see the header).
++- (void)sendKeyPressAndRelease:(int)scancode {
++    uint32_t i, b, m;
++    
++    g_return_if_fail(scancode != 0);
++    
++    if (!self.channel) {
++        return;
++    }
++    if (self.disableInputs) {
++        return;
++    }
++    
++    i = scancode / 32;
++    b = scancode % 32;
++    m = (1u << b);
++    g_return_if_fail(i < SPICE_N_ELEMENTS(self->_key_state));
++    
++    [CSMain.sharedInstance asyncWith:^{
++        spice_inputs_channel_key_press_and_release(self.channel, scancode);
++        self->_key_state[i] &= ~m;
++    }];
++}
++
+ - (void)releaseKeys {
+     uint32_t i, b;
+     
 diff --color -ruN a/CocoaSpice/CSMain.m b/CocoaSpice/CSMain.m
---- a/CocoaSpice/CSMain.m	2026-09-24 21:32:08
-+++ b/CocoaSpice/CSMain.m	2026-09-24 21:32:08
+--- a/CocoaSpice/CSMain.m	2026-09-25 09:51:12
++++ b/CocoaSpice/CSMain.m	2026-09-25 09:51:12
 @@ -18,7 +18,6 @@
  #import <glib.h>
  #import <spice-client.h>
@@ -281,8 +315,8 @@ diff --color -ruN a/CocoaSpice/CSMain.m b/CocoaSpice/CSMain.m
              g_main_context_wakeup(_main_context);
              pthread_join(self.spiceThread, &status);
 diff --color -ruN a/CocoaSpice/include/CSConnection.h b/CocoaSpice/include/CSConnection.h
---- a/CocoaSpice/include/CSConnection.h	2026-09-24 21:32:08
-+++ b/CocoaSpice/include/CSConnection.h	2026-09-24 21:32:08
+--- a/CocoaSpice/include/CSConnection.h	2026-09-25 09:51:12
++++ b/CocoaSpice/include/CSConnection.h	2026-09-25 09:51:12
 @@ -23,6 +23,10 @@
  
  NS_ASSUME_NONNULL_BEGIN
@@ -307,8 +341,8 @@ diff --color -ruN a/CocoaSpice/include/CSConnection.h b/CocoaSpice/include/CSCon
  /// Connects to SPICE server
  ///
 diff --color -ruN a/CocoaSpice/include/CSCursor.h b/CocoaSpice/include/CSCursor.h
---- a/CocoaSpice/include/CSCursor.h	2026-09-24 21:32:08
-+++ b/CocoaSpice/include/CSCursor.h	2026-09-24 21:32:08
+--- a/CocoaSpice/include/CSCursor.h	2026-09-25 09:51:12
++++ b/CocoaSpice/include/CSCursor.h	2026-09-25 09:51:12
 @@ -15,7 +15,7 @@
  //
  
@@ -319,8 +353,8 @@ diff --color -ruN a/CocoaSpice/include/CSCursor.h b/CocoaSpice/include/CSCursor.
  @class CSDisplay;
  
 diff --color -ruN a/CocoaSpice/include/CSDisplay.h b/CocoaSpice/include/CSDisplay.h
---- a/CocoaSpice/include/CSDisplay.h	2026-09-24 21:32:08
-+++ b/CocoaSpice/include/CSDisplay.h	2026-09-24 21:32:08
+--- a/CocoaSpice/include/CSDisplay.h	2026-09-25 09:51:12
++++ b/CocoaSpice/include/CSDisplay.h	2026-09-25 09:51:12
 @@ -17,7 +17,7 @@
  #import <Foundation/Foundation.h>
  #import "CSChannel.h"
@@ -330,9 +364,27 @@ diff --color -ruN a/CocoaSpice/include/CSDisplay.h b/CocoaSpice/include/CSDispla
  
  @class CSCursor;
  @class CSScreenshot;
+diff --color -ruN a/CocoaSpice/include/CSInput.h b/CocoaSpice/include/CSInput.h
+--- a/CocoaSpice/include/CSInput.h	2026-09-25 09:51:12
++++ b/CocoaSpice/include/CSInput.h	2026-09-25 09:51:12
+@@ -106,6 +106,14 @@
+ /// @param scancode PC XT (set 1) scancode
+ - (void)sendKey:(CSInputKey)type code:(int)scancode;
+ 
++/// ShadowPcAdvanced: sends a key press and its release as one message
++/// (SPICE_MSGC_INPUTS_KEY_SCANCODE; two messages if the server lacks that
++/// capability), so network delay can never make the guest see a long hold.
++///
++/// The key must not currently be pressed through `sendKey:code:`.
++/// @param scancode PC XT (set 1) scancode, extended keys as for `sendKey:code:`
++- (void)sendKeyPressAndRelease:(int)scancode;
++
+ /// Sends a single pause key event
+ ///
+ /// This key event is special and requires a special handler.
 diff --color -ruN a/CocoaSpiceRenderer/CSMetalRenderer.m b/CocoaSpiceRenderer/CSMetalRenderer.m
---- a/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-24 21:32:08
-+++ b/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-24 21:32:08
+--- a/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-25 09:51:12
++++ b/CocoaSpiceRenderer/CSMetalRenderer.m	2026-09-25 09:51:12
 @@ -117,7 +117,7 @@
  @synthesize viewportScale = _viewportScale;
  
@@ -441,8 +493,8 @@ diff --color -ruN a/CocoaSpiceRenderer/CSMetalRenderer.m b/CocoaSpiceRenderer/CS
  
  - (void)_renderEncoder:(id<MTLRenderCommandEncoder>)renderEncoder
 diff --color -ruN a/CocoaSpiceRenderer/include/CSMetalRenderer.h b/CocoaSpiceRenderer/include/CSMetalRenderer.h
---- a/CocoaSpiceRenderer/include/CSMetalRenderer.h	2026-09-24 21:32:08
-+++ b/CocoaSpiceRenderer/include/CSMetalRenderer.h	2026-09-24 21:32:08
+--- a/CocoaSpiceRenderer/include/CSMetalRenderer.h	2026-09-25 09:51:12
++++ b/CocoaSpiceRenderer/include/CSMetalRenderer.h	2026-09-25 09:51:12
 @@ -27,7 +27,12 @@
  
  /// Create a new renderer for a MTKView
